@@ -1,12 +1,18 @@
 import 'dart:ui';
-import 'package:firebase_auth/firebase_auth.dart';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
+import 'app/free_water_app.dart';
 import 'firebase_options.dart';
+import 'models/place_report_data.dart';
+import 'screens/add_place_screen.dart';
+import 'services/authentication_service.dart';
+import 'widgets/report_problem_sheet.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -15,31 +21,9 @@ Future<void> main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  if (FirebaseAuth.instance.currentUser == null) {
-    await FirebaseAuth.instance.signInAnonymously();
-  }
+  await AuthenticationService.ensureAnonymousUser();
 
   runApp(const FreeWaterApp());
-}
-
-
-class FreeWaterApp extends StatelessWidget {
-  const FreeWaterApp({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'DarmowaKranówka',
-      theme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.blue,
-        ),
-      ),
-      home: const MapScreen(),
-    );
-  }
 }
 
 class MapScreen extends StatefulWidget {
@@ -52,23 +36,78 @@ class MapScreen extends StatefulWidget {
 class _MapScreenState extends State<MapScreen> {
   Future<void> _showPlace(
     BuildContext context,
-    DocumentReference<Object?> placeReference,
+    DocumentReference<Map<String, dynamic>>
+        placeReference,
     String name,
     String address,
     int confirmations,
   ) async {
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Nie udało się rozpoznać użytkownika.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    final confirmationReference = placeReference
+        .collection('userConfirmations')
+        .doc(user.uid);
+
+    final reportReference = placeReference
+        .collection('reports')
+        .doc(user.uid);
+
+    bool hasAlreadyConfirmed;
+    bool hasAlreadyReported;
+
+    try {
+      final results = await Future.wait([
+        confirmationReference.get(),
+        reportReference.get(),
+      ]);
+
+      hasAlreadyConfirmed = results[0].exists;
+      hasAlreadyReported = results[1].exists;
+    } catch (error) {
+      if (!context.mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Nie udało się pobrać danych lokalu: '
+            '$error',
+          ),
+        ),
+      );
+      return;
+    }
+
+    if (!context.mounted) {
+      return;
+    }
+
     var displayedConfirmations = confirmations;
     var isConfirming = false;
-    var confirmedDuringThisOpening = false;
+    var isReporting = false;
 
     await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
+      isScrollControlled: true,
       builder: (bottomSheetContext) {
         return StatefulBuilder(
-          builder: (context, setModalState) {
+          builder: (modalContext, setModalState) {
             Future<void> confirmPlace() async {
-              if (isConfirming || confirmedDuringThisOpening) {
+              if (isConfirming ||
+                  hasAlreadyConfirmed) {
                 return;
               }
 
@@ -77,30 +116,51 @@ class _MapScreenState extends State<MapScreen> {
               });
 
               try {
-                await placeReference.update({
-                  'confirmations': FieldValue.increment(1),
-                  'lastConfirmedAt': FieldValue.serverTimestamp(),
-                });
+                final batch =
+                    FirebaseFirestore.instance.batch();
 
-                if (!context.mounted) {
+                batch.update(
+                  placeReference,
+                  {
+                    'confirmations':
+                        FieldValue.increment(1),
+                    'lastConfirmedAt':
+                        FieldValue.serverTimestamp(),
+                  },
+                );
+
+                batch.set(
+                  confirmationReference,
+                  {
+                    'userId': user.uid,
+                    'createdAt':
+                        FieldValue.serverTimestamp(),
+                  },
+                );
+
+                await batch.commit();
+
+                if (!modalContext.mounted) {
                   return;
                 }
 
                 setModalState(() {
                   displayedConfirmations++;
                   isConfirming = false;
-                  confirmedDuringThisOpening = true;
+                  hasAlreadyConfirmed = true;
                 });
 
-                ScaffoldMessenger.of(bottomSheetContext).showSnackBar(
+                ScaffoldMessenger.of(
+                  bottomSheetContext,
+                ).showSnackBar(
                   const SnackBar(
                     content: Text(
                       'Dziękujemy za potwierdzenie.',
                     ),
                   ),
                 );
-              } catch (error) {
-                if (!context.mounted) {
+              } on FirebaseException catch (error) {
+                if (!modalContext.mounted) {
                   return;
                 }
 
@@ -108,91 +168,279 @@ class _MapScreenState extends State<MapScreen> {
                   isConfirming = false;
                 });
 
-                ScaffoldMessenger.of(bottomSheetContext).showSnackBar(
+                final message =
+                    error.code == 'permission-denied'
+                        ? 'To miejsce zostało już przez '
+                            'Ciebie potwierdzone.'
+                        : 'Nie udało się zapisać '
+                            'potwierdzenia: '
+                            '${error.message ?? error.code}';
+
+                ScaffoldMessenger.of(
+                  bottomSheetContext,
+                ).showSnackBar(
+                  SnackBar(
+                    content: Text(message),
+                  ),
+                );
+
+                if (error.code ==
+                    'permission-denied') {
+                  setModalState(() {
+                    hasAlreadyConfirmed = true;
+                  });
+                }
+              } catch (error) {
+                if (!modalContext.mounted) {
+                  return;
+                }
+
+                setModalState(() {
+                  isConfirming = false;
+                });
+
+                ScaffoldMessenger.of(
+                  bottomSheetContext,
+                ).showSnackBar(
                   SnackBar(
                     content: Text(
-                      'Nie udało się zapisać potwierdzenia: $error',
+                      'Nie udało się zapisać '
+                      'potwierdzenia: $error',
                     ),
                   ),
                 );
               }
             }
 
-            return Padding(
-              padding: const EdgeInsets.fromLTRB(
-                24,
-                8,
-                24,
-                24,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    name,
-                    style: const TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
+            Future<void> reportProblem() async {
+              if (isReporting ||
+                  hasAlreadyReported) {
+                return;
+              }
+
+              final report =
+                  await showModalBottomSheet<
+                      PlaceReportData>(
+                context: modalContext,
+                isScrollControlled: true,
+                showDragHandle: true,
+                builder: (context) {
+                  return const ReportProblemSheet();
+                },
+              );
+
+              if (report == null ||
+                  !modalContext.mounted) {
+                return;
+              }
+
+              setModalState(() {
+                isReporting = true;
+              });
+
+              try {
+                await reportReference.set({
+                  'userId': user.uid,
+                  'reason': report.reason,
+                  'details': report.details,
+                  'createdAt':
+                      FieldValue.serverTimestamp(),
+                  'status': 'open',
+                });
+
+                if (!modalContext.mounted) {
+                  return;
+                }
+
+                setModalState(() {
+                  isReporting = false;
+                  hasAlreadyReported = true;
+                });
+
+                ScaffoldMessenger.of(
+                  bottomSheetContext,
+                ).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'Zgłoszenie zostało zapisane.',
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  Text(address),
-                  const SizedBox(height: 16),
-                  const Row(
-                    children: [
-                      Icon(
-                        Icons.water_drop,
-                        color: Colors.blue,
-                      ),
-                      SizedBox(width: 8),
-                      Text(
-                        'Darmowa woda do zamówienia',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
+                );
+              } on FirebaseException catch (error) {
+                if (!modalContext.mounted) {
+                  return;
+                }
+
+                setModalState(() {
+                  isReporting = false;
+                });
+
+                final message =
+                    error.code == 'permission-denied'
+                        ? 'Ten lokal został już przez '
+                            'Ciebie zgłoszony.'
+                        : 'Nie udało się zapisać '
+                            'zgłoszenia: '
+                            '${error.message ?? error.code}';
+
+                ScaffoldMessenger.of(
+                  bottomSheetContext,
+                ).showSnackBar(
+                  SnackBar(
+                    content: Text(message),
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Potwierdzone: $displayedConfirmations razy',
+                );
+
+                if (error.code ==
+                    'permission-denied') {
+                  setModalState(() {
+                    hasAlreadyReported = true;
+                  });
+                }
+              } catch (error) {
+                if (!modalContext.mounted) {
+                  return;
+                }
+
+                setModalState(() {
+                  isReporting = false;
+                });
+
+                ScaffoldMessenger.of(
+                  bottomSheetContext,
+                ).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      'Nie udało się zapisać '
+                      'zgłoszenia: $error',
+                    ),
                   ),
-                  const SizedBox(height: 20),
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton(
-                      style: FilledButton.styleFrom(
-                        backgroundColor: Colors.blue,
-                        foregroundColor: Colors.white,
-                        disabledBackgroundColor:
-                            Colors.blue.withValues(alpha: 0.45),
-                        disabledForegroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(
-                          vertical: 14,
-                        ),
+                );
+              }
+            }
+
+            return SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  24,
+                  8,
+                  24,
+                  24,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      name,
+                      style: const TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
                       ),
-                      onPressed:
-                          isConfirming || confirmedDuringThisOpening
-                              ? null
-                              : confirmPlace,
-                      child: isConfirming
-                          ? const SizedBox(
-                              width: 22,
-                              height: 22,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : Text(
-                              confirmedDuringThisOpening
-                                  ? 'Potwierdzono'
-                                  : 'Potwierdzam',
+                    ),
+                    const SizedBox(height: 8),
+                    Text(address),
+                    const SizedBox(height: 16),
+                    const Row(
+                      children: [
+                        Icon(
+                          Icons.water_drop,
+                          color: Colors.blue,
+                        ),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Darmowa woda do zamówienia',
+                            style: TextStyle(
+                              fontWeight:
+                                  FontWeight.w600,
                             ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 8),
+                    Text(
+                      'Potwierdzone: '
+                      '$displayedConfirmations razy',
+                    ),
+                    const SizedBox(height: 20),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton(
+                        style:
+                            FilledButton.styleFrom(
+                          backgroundColor:
+                              Colors.blue,
+                          foregroundColor:
+                              Colors.white,
+                          disabledBackgroundColor:
+                              Colors.blue.withValues(
+                            alpha: 0.45,
+                          ),
+                          disabledForegroundColor:
+                              Colors.white,
+                          padding:
+                              const EdgeInsets.symmetric(
+                            vertical: 14,
+                          ),
+                        ),
+                        onPressed:
+                            isConfirming ||
+                                    hasAlreadyConfirmed
+                                ? null
+                                : confirmPlace,
+                        child: isConfirming
+                            ? const SizedBox(
+                                width: 22,
+                                height: 22,
+                                child:
+                                    CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : Text(
+                                hasAlreadyConfirmed
+                                    ? 'Już potwierdziłeś'
+                                    : 'Potwierdzam',
+                              ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed:
+                            isReporting ||
+                                    hasAlreadyReported
+                                ? null
+                                : reportProblem,
+                        icon: isReporting
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child:
+                                    CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : Icon(
+                                hasAlreadyReported
+                                    ? Icons.check_circle
+                                    : Icons.flag_outlined,
+                              ),
+                        label: Text(
+                          hasAlreadyReported
+                              ? 'Problem już zgłoszony'
+                              : 'Zgłoś problem',
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             );
           },
@@ -204,7 +452,8 @@ class _MapScreenState extends State<MapScreen> {
   void _openAddPlaceScreen() {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (context) => const AddPlaceScreen(),
+        builder: (context) =>
+            const AddPlaceScreen(),
       ),
     );
   }
@@ -214,7 +463,8 @@ class _MapScreenState extends State<MapScreen> {
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(kToolbarHeight),
+        preferredSize:
+            const Size.fromHeight(kToolbarHeight),
         child: ClipRect(
           child: BackdropFilter(
             filter: ImageFilter.blur(
@@ -245,7 +495,8 @@ class _MapScreenState extends State<MapScreen> {
                     'Dodaj lokal',
                     style: TextStyle(
                       color: Colors.blue,
-                      fontWeight: FontWeight.w600,
+                      fontWeight:
+                          FontWeight.w600,
                     ),
                   ),
                 ),
@@ -255,10 +506,14 @@ class _MapScreenState extends State<MapScreen> {
           ),
         ),
       ),
-      body: StreamBuilder<QuerySnapshot>(
+      body: StreamBuilder<
+          QuerySnapshot<Map<String, dynamic>>>(
         stream: FirebaseFirestore.instance
             .collection('places')
-            .where('status', isEqualTo: 'active')
+            .where(
+              'status',
+              isEqualTo: 'active',
+            )
             .snapshots(),
         builder: (context, snapshot) {
           if (snapshot.hasError) {
@@ -289,25 +544,29 @@ class _MapScreenState extends State<MapScreen> {
             children: [
               TileLayer(
                 urlTemplate:
-                    'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                userAgentPackageName: 'pl.freewater.app',
+                    'https://tile.openstreetmap.org/'
+                    '{z}/{x}/{y}.png',
+                userAgentPackageName:
+                    'pl.freewater.app',
               ),
               MarkerLayer(
                 markers: places.map((doc) {
-                  final data =
-                      doc.data() as Map<String, dynamic>;
+                  final data = doc.data();
 
                   final name =
-                      data['name'] as String? ?? 'Nieznany lokal';
+                      data['name'] as String? ??
+                          'Nieznany lokal';
 
                   final address =
-                      data['address'] as String? ?? 'Brak adresu';
+                      data['address'] as String? ??
+                          'Brak adresu';
 
                   final location =
                       data['location'] as GeoPoint?;
 
                   final confirmations =
-                      (data['confirmations'] as num?)?.toInt() ??
+                      (data['confirmations'] as num?)
+                              ?.toInt() ??
                           0;
 
                   if (location == null) {
@@ -348,273 +607,6 @@ class _MapScreenState extends State<MapScreen> {
             ],
           );
         },
-      ),
-    );
-  }
-}
-
-class AddPlaceScreen extends StatefulWidget {
-  const AddPlaceScreen({super.key});
-
-  @override
-  State<AddPlaceScreen> createState() =>
-      _AddPlaceScreenState();
-}
-
-class _AddPlaceScreenState extends State<AddPlaceScreen> {
-  final _nameController = TextEditingController();
-  final _addressController = TextEditingController();
-
-  LatLng? _selectedLocation;
-  String _category = 'restaurant';
-  bool _isSaving = false;
-
-  @override
-  void dispose() {
-    _nameController.dispose();
-    _addressController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _savePlace() async {
-    final name = _nameController.text.trim();
-    final address = _addressController.text.trim();
-
-    if (name.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Podaj nazwę lokalu.'),
-        ),
-      );
-      return;
-    }
-
-    if (address.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Podaj adres lokalu.'),
-        ),
-      );
-      return;
-    }
-
-    if (_selectedLocation == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Wskaż lokal na mapie.'),
-        ),
-      );
-      return;
-    }
-
-    setState(() {
-      _isSaving = true;
-    });
-
-    try {
-      await FirebaseFirestore.instance
-          .collection('places')
-          .add({
-        'name': name,
-        'address': address,
-        'location': GeoPoint(
-          _selectedLocation!.latitude,
-          _selectedLocation!.longitude,
-        ),
-        'category': _category,
-        'confirmations': 1,
-        'status': 'active',
-        'createdAt': FieldValue.serverTimestamp(),
-        'lastConfirmedAt': FieldValue.serverTimestamp(),
-      });
-
-      if (!mounted) {
-        return;
-      }
-
-      Navigator.of(context).pop();
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-
-      setState(() {
-        _isSaving = false;
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Nie udało się zapisać lokalu: $error',
-          ),
-        ),
-      );
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Dodaj lokal'),
-      ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              16,
-              16,
-              16,
-              8,
-            ),
-            child: Column(
-              children: [
-                TextField(
-                  controller: _nameController,
-                  decoration: const InputDecoration(
-                    labelText: 'Nazwa lokalu',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _addressController,
-                  decoration: const InputDecoration(
-                    labelText: 'Adres',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  initialValue: _category,
-                  decoration: const InputDecoration(
-                    labelText: 'Rodzaj lokalu',
-                    border: OutlineInputBorder(),
-                  ),
-                  items: const [
-                    DropdownMenuItem(
-                      value: 'restaurant',
-                      child: Text('Restauracja'),
-                    ),
-                    DropdownMenuItem(
-                      value: 'cafe',
-                      child: Text('Kawiarnia'),
-                    ),
-                    DropdownMenuItem(
-                      value: 'bar',
-                      child: Text('Bar'),
-                    ),
-                    DropdownMenuItem(
-                      value: 'other',
-                      child: Text('Inne'),
-                    ),
-                  ],
-                  onChanged: (value) {
-                    if (value == null) {
-                      return;
-                    }
-
-                    setState(() {
-                      _category = value;
-                    });
-                  },
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.location_on,
-                      color: Colors.blue,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        _selectedLocation == null
-                            ? 'Kliknij miejsce lokalu na mapie'
-                            : 'Lokalizacja wybrana',
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: FlutterMap(
-              options: MapOptions(
-                initialCenter: const LatLng(
-                  54.5189,
-                  18.5305,
-                ),
-                initialZoom: 14,
-                onTap: (tapPosition, point) {
-                  setState(() {
-                    _selectedLocation = point;
-                  });
-                },
-              ),
-              children: [
-                TileLayer(
-                  urlTemplate:
-                      'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                  userAgentPackageName: 'pl.freewater.app',
-                ),
-                if (_selectedLocation != null)
-                  MarkerLayer(
-                    markers: [
-                      Marker(
-                        point: _selectedLocation!,
-                        width: 50,
-                        height: 50,
-                        child: const Icon(
-                          Icons.water_drop,
-                          size: 42,
-                          color: Colors.blue,
-                        ),
-                      ),
-                    ],
-                  ),
-                RichAttributionWidget(
-                  attributions: [
-                    TextSourceAttribution(
-                      'OpenStreetMap contributors',
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: Colors.blue,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                      vertical: 16,
-                    ),
-                  ),
-                  onPressed:
-                      _isSaving ? null : _savePlace,
-                  child: _isSaving
-                      ? const SizedBox(
-                          width: 22,
-                          height: 22,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Text('Dodaj lokal'),
-                ),
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }
