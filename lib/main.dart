@@ -749,10 +749,8 @@ class _MapScreenState
                                 .orange
                             : status ==
                                     'pending'
-                                ? Colors
-                                    .lightBlue
-                                : Colors
-                                    .blue;
+                                ? Colors.blueGrey.shade300
+                                : Colors.blue.shade700;
 
                     return Marker(
                       point: LatLng(
