@@ -18,10 +18,12 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
+    options:
+        DefaultFirebaseOptions.currentPlatform,
   );
 
-  await AuthenticationService.ensureAnonymousUser();
+  await AuthenticationService
+      .ensureAnonymousUser();
 
   runApp(const FreeWaterApp());
 }
@@ -30,10 +32,12 @@ class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
 
   @override
-  State<MapScreen> createState() => _MapScreenState();
+  State<MapScreen> createState() =>
+      _MapScreenState();
 }
 
-class _MapScreenState extends State<MapScreen> {
+class _MapScreenState
+    extends State<MapScreen> {
   Future<void> _showPlace(
     BuildContext context,
     DocumentReference<Map<String, dynamic>>
@@ -41,11 +45,14 @@ class _MapScreenState extends State<MapScreen> {
     String name,
     String address,
     int confirmations,
+    String status,
   ) async {
-    final user = FirebaseAuth.instance.currentUser;
+    final user =
+        FirebaseAuth.instance.currentUser;
 
     if (user == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      ScaffoldMessenger.of(context)
+          .showSnackBar(
         const SnackBar(
           content: Text(
             'Nie udało się rozpoznać użytkownika.',
@@ -55,31 +62,40 @@ class _MapScreenState extends State<MapScreen> {
       return;
     }
 
-    final confirmationReference = placeReference
-        .collection('userConfirmations')
-        .doc(user.uid);
+    final confirmationReference =
+        placeReference
+            .collection(
+              'userConfirmations',
+            )
+            .doc(user.uid);
 
-    final reportReference = placeReference
-        .collection('reports')
-        .doc(user.uid);
+    final reportReference =
+        placeReference
+            .collection('reports')
+            .doc(user.uid);
 
     bool hasAlreadyConfirmed;
     bool hasAlreadyReported;
 
     try {
-      final results = await Future.wait([
+      final results =
+          await Future.wait([
         confirmationReference.get(),
         reportReference.get(),
       ]);
 
-      hasAlreadyConfirmed = results[0].exists;
-      hasAlreadyReported = results[1].exists;
+      hasAlreadyConfirmed =
+          results[0].exists;
+
+      hasAlreadyReported =
+          results[1].exists;
     } catch (error) {
       if (!context.mounted) {
         return;
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
+      ScaffoldMessenger.of(context)
+          .showSnackBar(
         SnackBar(
           content: Text(
             'Nie udało się pobrać danych lokalu: '
@@ -94,7 +110,11 @@ class _MapScreenState extends State<MapScreen> {
       return;
     }
 
-    var displayedConfirmations = confirmations;
+    var displayedConfirmations =
+        confirmations;
+
+    var displayedStatus = status;
+
     var isConfirming = false;
     var isReporting = false;
 
@@ -102,12 +122,18 @@ class _MapScreenState extends State<MapScreen> {
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
-      builder: (bottomSheetContext) {
+      builder:
+          (bottomSheetContext) {
         return StatefulBuilder(
-          builder: (modalContext, setModalState) {
-            Future<void> confirmPlace() async {
+          builder:
+              (modalContext,
+                  setModalState) {
+            Future<void>
+                confirmPlace() async {
               if (isConfirming ||
-                  hasAlreadyConfirmed) {
+                  hasAlreadyConfirmed ||
+                  displayedStatus ==
+                      'disputed') {
                 return;
               }
 
@@ -117,37 +143,69 @@ class _MapScreenState extends State<MapScreen> {
 
               try {
                 final batch =
-                    FirebaseFirestore.instance.batch();
+                    FirebaseFirestore
+                        .instance
+                        .batch();
+
+                final nextConfirmations =
+                    displayedConfirmations +
+                        1;
+
+                String nextStatus =
+                    displayedStatus;
+
+                if (displayedStatus ==
+                        'pending' &&
+                    nextConfirmations >=
+                        2) {
+                  nextStatus =
+                      'confirmed';
+                }
 
                 batch.update(
                   placeReference,
                   {
                     'confirmations':
-                        FieldValue.increment(1),
+                        FieldValue
+                            .increment(1),
                     'lastConfirmedAt':
-                        FieldValue.serverTimestamp(),
+                        FieldValue
+                            .serverTimestamp(),
+                    'status':
+                        nextStatus,
                   },
                 );
 
                 batch.set(
                   confirmationReference,
                   {
-                    'userId': user.uid,
+                    'userId':
+                        user.uid,
                     'createdAt':
-                        FieldValue.serverTimestamp(),
+                        FieldValue
+                            .serverTimestamp(),
                   },
                 );
 
                 await batch.commit();
 
-                if (!modalContext.mounted) {
+                if (!modalContext
+                    .mounted) {
                   return;
                 }
 
                 setModalState(() {
-                  displayedConfirmations++;
-                  isConfirming = false;
-                  hasAlreadyConfirmed = true;
+                  displayedConfirmations =
+                      nextConfirmations;
+
+                  displayedStatus =
+                      nextStatus;
+
+                  isConfirming =
+                      false;
+
+                  hasAlreadyConfirmed =
+                      true;
                 });
 
                 ScaffoldMessenger.of(
@@ -159,60 +217,38 @@ class _MapScreenState extends State<MapScreen> {
                     ),
                   ),
                 );
-              } on FirebaseException catch (error) {
-                if (!modalContext.mounted) {
+              } on FirebaseException catch (
+                  error) {
+                if (!modalContext
+                    .mounted) {
                   return;
                 }
 
                 setModalState(() {
-                  isConfirming = false;
+                  isConfirming =
+                      false;
                 });
 
                 final message =
-                    error.code == 'permission-denied'
-                        ? 'To miejsce zostało już przez '
-                            'Ciebie potwierdzone.'
-                        : 'Nie udało się zapisać '
-                            'potwierdzenia: '
+                    error.code ==
+                            'permission-denied'
+                        ? 'Operacja została odrzucona przez reguły bezpieczeństwa.'
+                        : 'Nie udało się zapisać potwierdzenia: '
                             '${error.message ?? error.code}';
 
                 ScaffoldMessenger.of(
                   bottomSheetContext,
                 ).showSnackBar(
                   SnackBar(
-                    content: Text(message),
-                  ),
-                );
-
-                if (error.code ==
-                    'permission-denied') {
-                  setModalState(() {
-                    hasAlreadyConfirmed = true;
-                  });
-                }
-              } catch (error) {
-                if (!modalContext.mounted) {
-                  return;
-                }
-
-                setModalState(() {
-                  isConfirming = false;
-                });
-
-                ScaffoldMessenger.of(
-                  bottomSheetContext,
-                ).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      'Nie udało się zapisać '
-                      'potwierdzenia: $error',
-                    ),
+                    content:
+                        Text(message),
                   ),
                 );
               }
             }
 
-            Future<void> reportProblem() async {
+            Future<void>
+                reportProblem() async {
               if (isReporting ||
                   hasAlreadyReported) {
                 return;
@@ -221,16 +257,20 @@ class _MapScreenState extends State<MapScreen> {
               final report =
                   await showModalBottomSheet<
                       PlaceReportData>(
-                context: modalContext,
-                isScrollControlled: true,
-                showDragHandle: true,
+                context:
+                    modalContext,
+                isScrollControlled:
+                    true,
+                showDragHandle:
+                    true,
                 builder: (context) {
                   return const ReportProblemSheet();
                 },
               );
 
               if (report == null ||
-                  !modalContext.mounted) {
+                  !modalContext
+                      .mounted) {
                 return;
               }
 
@@ -239,22 +279,30 @@ class _MapScreenState extends State<MapScreen> {
               });
 
               try {
-                await reportReference.set({
+                await reportReference
+                    .set({
                   'userId': user.uid,
-                  'reason': report.reason,
-                  'details': report.details,
+                  'reason':
+                      report.reason,
+                  'details':
+                      report.details,
                   'createdAt':
-                      FieldValue.serverTimestamp(),
+                      FieldValue
+                          .serverTimestamp(),
                   'status': 'open',
                 });
 
-                if (!modalContext.mounted) {
+                if (!modalContext
+                    .mounted) {
                   return;
                 }
 
                 setModalState(() {
-                  isReporting = false;
-                  hasAlreadyReported = true;
+                  isReporting =
+                      false;
+
+                  hasAlreadyReported =
+                      true;
                 });
 
                 ScaffoldMessenger.of(
@@ -266,172 +314,242 @@ class _MapScreenState extends State<MapScreen> {
                     ),
                   ),
                 );
-              } on FirebaseException catch (error) {
-                if (!modalContext.mounted) {
+              } on FirebaseException catch (
+                  error) {
+                if (!modalContext
+                    .mounted) {
                   return;
                 }
 
                 setModalState(() {
-                  isReporting = false;
+                  isReporting =
+                      false;
                 });
 
                 final message =
-                    error.code == 'permission-denied'
-                        ? 'Ten lokal został już przez '
-                            'Ciebie zgłoszony.'
-                        : 'Nie udało się zapisać '
-                            'zgłoszenia: '
+                    error.code ==
+                            'permission-denied'
+                        ? 'Ten lokal został już przez Ciebie zgłoszony.'
+                        : 'Nie udało się zapisać zgłoszenia: '
                             '${error.message ?? error.code}';
 
                 ScaffoldMessenger.of(
                   bottomSheetContext,
                 ).showSnackBar(
                   SnackBar(
-                    content: Text(message),
-                  ),
-                );
-
-                if (error.code ==
-                    'permission-denied') {
-                  setModalState(() {
-                    hasAlreadyReported = true;
-                  });
-                }
-              } catch (error) {
-                if (!modalContext.mounted) {
-                  return;
-                }
-
-                setModalState(() {
-                  isReporting = false;
-                });
-
-                ScaffoldMessenger.of(
-                  bottomSheetContext,
-                ).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      'Nie udało się zapisać '
-                      'zgłoszenia: $error',
-                    ),
+                    content:
+                        Text(message),
                   ),
                 );
               }
             }
 
+            String statusLabel;
+
+            switch (displayedStatus) {
+              case 'confirmed':
+                statusLabel =
+                    'Potwierdzony lokal';
+                break;
+
+              case 'disputed':
+                statusLabel =
+                    'Informacja kwestionowana';
+                break;
+
+              default:
+                statusLabel =
+                    'Nowe zgłoszenie';
+            }
+
             return SafeArea(
               top: false,
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(
+                padding:
+                    const EdgeInsets
+                        .fromLTRB(
                   24,
                   8,
                   24,
                   24,
                 ),
                 child: Column(
-                  mainAxisSize: MainAxisSize.min,
+                  mainAxisSize:
+                      MainAxisSize.min,
                   crossAxisAlignment:
-                      CrossAxisAlignment.start,
+                      CrossAxisAlignment
+                          .start,
                   children: [
                     Text(
                       name,
-                      style: const TextStyle(
+                      style:
+                          const TextStyle(
                         fontSize: 22,
-                        fontWeight: FontWeight.bold,
+                        fontWeight:
+                            FontWeight
+                                .bold,
                       ),
                     ),
-                    const SizedBox(height: 8),
+
+                    const SizedBox(
+                      height: 8,
+                    ),
+
                     Text(address),
-                    const SizedBox(height: 16),
+
+                    const SizedBox(
+                      height: 12,
+                    ),
+
+                    Text(
+                      statusLabel,
+                      style: TextStyle(
+                        fontWeight:
+                            FontWeight
+                                .w700,
+                        color:
+                            displayedStatus ==
+                                    'disputed'
+                                ? Colors
+                                    .orange
+                                : Colors
+                                    .blue,
+                      ),
+                    ),
+
+                    const SizedBox(
+                      height: 12,
+                    ),
+
                     const Row(
                       children: [
                         Icon(
-                          Icons.water_drop,
-                          color: Colors.blue,
+                          Icons
+                              .water_drop,
+                          color:
+                              Colors.blue,
                         ),
-                        SizedBox(width: 8),
+                        SizedBox(
+                          width: 8,
+                        ),
                         Expanded(
                           child: Text(
                             'Darmowa woda do zamówienia',
-                            style: TextStyle(
+                            style:
+                                TextStyle(
                               fontWeight:
-                                  FontWeight.w600,
+                                  FontWeight
+                                      .w600,
                             ),
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 8),
+
+                    const SizedBox(
+                      height: 8,
+                    ),
+
                     Text(
                       'Potwierdzone: '
                       '$displayedConfirmations razy',
                     ),
-                    const SizedBox(height: 20),
+
+                    const SizedBox(
+                      height: 20,
+                    ),
+
                     SizedBox(
-                      width: double.infinity,
-                      child: FilledButton(
+                      width:
+                          double.infinity,
+                      child:
+                          FilledButton(
                         style:
-                            FilledButton.styleFrom(
+                            FilledButton
+                                .styleFrom(
                           backgroundColor:
                               Colors.blue,
                           foregroundColor:
                               Colors.white,
                           disabledBackgroundColor:
-                              Colors.blue.withValues(
+                              Colors.blue
+                                  .withValues(
                             alpha: 0.45,
                           ),
                           disabledForegroundColor:
                               Colors.white,
                           padding:
-                              const EdgeInsets.symmetric(
+                              const EdgeInsets
+                                  .symmetric(
                             vertical: 14,
                           ),
                         ),
                         onPressed:
                             isConfirming ||
-                                    hasAlreadyConfirmed
+                                    hasAlreadyConfirmed ||
+                                    displayedStatus ==
+                                        'disputed'
                                 ? null
                                 : confirmPlace,
-                        child: isConfirming
-                            ? const SizedBox(
-                                width: 22,
-                                height: 22,
-                                child:
-                                    CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : Text(
-                                hasAlreadyConfirmed
-                                    ? 'Już potwierdziłeś'
-                                    : 'Potwierdzam',
-                              ),
+                        child:
+                            isConfirming
+                                ? const SizedBox(
+                                    width:
+                                        22,
+                                    height:
+                                        22,
+                                    child:
+                                        CircularProgressIndicator(
+                                      strokeWidth:
+                                          2,
+                                      color:
+                                          Colors.white,
+                                    ),
+                                  )
+                                : Text(
+                                    displayedStatus ==
+                                            'disputed'
+                                        ? 'Potwierdzanie wstrzymane'
+                                        : hasAlreadyConfirmed
+                                            ? 'Już potwierdziłeś'
+                                            : 'Potwierdzam',
+                                  ),
                       ),
                     ),
-                    const SizedBox(height: 10),
+
+                    const SizedBox(
+                      height: 10,
+                    ),
+
                     SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
+                      width:
+                          double.infinity,
+                      child:
+                          OutlinedButton
+                              .icon(
                         onPressed:
                             isReporting ||
                                     hasAlreadyReported
                                 ? null
                                 : reportProblem,
-                        icon: isReporting
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child:
-                                    CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : Icon(
-                                hasAlreadyReported
-                                    ? Icons.check_circle
-                                    : Icons.flag_outlined,
-                              ),
+                        icon:
+                            isReporting
+                                ? const SizedBox(
+                                    width:
+                                        18,
+                                    height:
+                                        18,
+                                    child:
+                                        CircularProgressIndicator(
+                                      strokeWidth:
+                                          2,
+                                    ),
+                                  )
+                                : Icon(
+                                    hasAlreadyReported
+                                        ? Icons.check_circle
+                                        : Icons.flag_outlined,
+                                  ),
                         label: Text(
                           hasAlreadyReported
                               ? 'Problem już zgłoszony'
@@ -462,80 +580,117 @@ class _MapScreenState extends State<MapScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       extendBodyBehindAppBar: true,
+
       appBar: PreferredSize(
         preferredSize:
-            const Size.fromHeight(kToolbarHeight),
+            const Size.fromHeight(
+          kToolbarHeight,
+        ),
         child: ClipRect(
           child: BackdropFilter(
-            filter: ImageFilter.blur(
+            filter:
+                ImageFilter.blur(
               sigmaX: 12,
               sigmaY: 12,
             ),
             child: AppBar(
               backgroundColor:
-                  Colors.white.withValues(alpha: 0.62),
-              surfaceTintColor: Colors.transparent,
+                  Colors.white
+                      .withValues(
+                alpha: 0.62,
+              ),
+              surfaceTintColor:
+                  Colors.transparent,
               elevation: 0,
-              scrolledUnderElevation: 0,
+              scrolledUnderElevation:
+                  0,
               title: const Text(
                 'DarmowaKranówka',
                 style: TextStyle(
                   color: Colors.blue,
-                  fontWeight: FontWeight.w700,
+                  fontWeight:
+                      FontWeight.w700,
                 ),
               ),
               actions: [
                 TextButton.icon(
-                  onPressed: _openAddPlaceScreen,
+                  onPressed:
+                      _openAddPlaceScreen,
                   icon: const Icon(
-                    Icons.add_location_alt,
+                    Icons
+                        .add_location_alt,
                     color: Colors.blue,
                   ),
-                  label: const Text(
+                  label:
+                      const Text(
                     'Dodaj lokal',
                     style: TextStyle(
-                      color: Colors.blue,
+                      color:
+                          Colors.blue,
                       fontWeight:
-                          FontWeight.w600,
+                          FontWeight
+                              .w600,
                     ),
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(
+                  width: 12,
+                ),
               ],
             ),
           ),
         ),
       ),
+
       body: StreamBuilder<
-          QuerySnapshot<Map<String, dynamic>>>(
-        stream: FirebaseFirestore.instance
-            .collection('places')
-            .where(
-              'status',
-              isEqualTo: 'active',
-            )
-            .snapshots(),
-        builder: (context, snapshot) {
+          QuerySnapshot<
+              Map<String,
+                  dynamic>>>(
+        stream:
+            FirebaseFirestore
+                .instance
+                .collection(
+                  'places',
+                )
+                .where(
+                  'status',
+                  whereIn: [
+                    'pending',
+                    'confirmed',
+                    'disputed',
+                  ],
+                )
+                .snapshots(),
+        builder:
+            (context, snapshot) {
           if (snapshot.hasError) {
             return Center(
               child: Text(
-                'Błąd: ${snapshot.error}',
+                'Błąd: '
+                '${snapshot.error}',
               ),
             );
           }
 
-          if (snapshot.connectionState ==
-              ConnectionState.waiting) {
+          if (snapshot
+                  .connectionState ==
+              ConnectionState
+                  .waiting) {
             return const Center(
-              child: CircularProgressIndicator(),
+              child:
+                  CircularProgressIndicator(),
             );
           }
 
-          final places = snapshot.data?.docs ?? [];
+          final places =
+              snapshot.data?.docs ??
+                  [];
 
           return FlutterMap(
-            options: const MapOptions(
-              initialCenter: LatLng(
+            options:
+                const MapOptions(
+              initialCenter:
+                  LatLng(
                 54.5189,
                 18.5305,
               ),
@@ -549,54 +704,92 @@ class _MapScreenState extends State<MapScreen> {
                 userAgentPackageName:
                     'pl.freewater.app',
               ),
+
               MarkerLayer(
-                markers: places.map((doc) {
-                  final data = doc.data();
+                markers:
+                    places.map(
+                  (doc) {
+                    final data =
+                        doc.data();
 
-                  final name =
-                      data['name'] as String? ??
-                          'Nieznany lokal';
+                    final name =
+                        data['name']
+                                as String? ??
+                            'Nieznany lokal';
 
-                  final address =
-                      data['address'] as String? ??
-                          'Brak adresu';
+                    final address =
+                        data['address']
+                                as String? ??
+                            'Brak adresu';
 
-                  final location =
-                      data['location'] as GeoPoint?;
+                    final location =
+                        data['location']
+                            as GeoPoint?;
 
-                  final confirmations =
-                      (data['confirmations'] as num?)
-                              ?.toInt() ??
-                          0;
+                    final confirmations =
+                        (data['confirmations']
+                                    as num?)
+                                ?.toInt() ??
+                            0;
 
-                  if (location == null) {
-                    return null;
-                  }
+                    final status =
+                        data['status']
+                                as String? ??
+                            'pending';
 
-                  return Marker(
-                    point: LatLng(
-                      location.latitude,
-                      location.longitude,
-                    ),
-                    width: 50,
-                    height: 50,
-                    child: GestureDetector(
-                      onTap: () => _showPlace(
-                        context,
-                        doc.reference,
-                        name,
-                        address,
-                        confirmations,
+                    if (location ==
+                        null) {
+                      return null;
+                    }
+
+                    final markerColor =
+                        status ==
+                                'disputed'
+                            ? Colors
+                                .orange
+                            : status ==
+                                    'pending'
+                                ? Colors
+                                    .lightBlue
+                                : Colors
+                                    .blue;
+
+                    return Marker(
+                      point: LatLng(
+                        location
+                            .latitude,
+                        location
+                            .longitude,
                       ),
-                      child: const Icon(
-                        Icons.water_drop,
-                        size: 42,
-                        color: Colors.blue,
+                      width: 50,
+                      height: 50,
+                      child:
+                          GestureDetector(
+                        onTap: () =>
+                            _showPlace(
+                          context,
+                          doc.reference,
+                          name,
+                          address,
+                          confirmations,
+                          status,
+                        ),
+                        child: Icon(
+                          Icons
+                              .water_drop,
+                          size: 42,
+                          color:
+                              markerColor,
+                        ),
                       ),
-                    ),
-                  );
-                }).whereType<Marker>().toList(),
+                    );
+                  },
+                )
+                        .whereType<
+                            Marker>()
+                        .toList(),
               ),
+
               RichAttributionWidget(
                 attributions: [
                   TextSourceAttribution(
