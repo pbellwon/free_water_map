@@ -78,6 +78,28 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
+  String _disputeReasonLabel(String? reason) {
+    switch (reason) {
+      case 'no_free_water':
+        return 'Zgłoszono, że lokal może już nie podawać darmowej wody';
+
+      case 'wrong_location':
+        return 'Zgłoszono błędny adres lub pozycję lokalu';
+
+      case 'closed':
+        return 'Zgłoszono, że lokal może być zamknięty lub nie istnieć';
+
+      case 'duplicate':
+        return 'Zgłoszono, że ten wpis może być duplikatem';
+
+      case 'other':
+        return 'Zgłoszono inny problem dotyczący tego lokalu';
+
+      default:
+        return 'Informacja o lokalu została zakwestionowana';
+    }
+  }
+
   Future<void> _showPlace(
     BuildContext context,
     DocumentReference<Map<String, dynamic>> placeReference,
@@ -85,6 +107,7 @@ class _MapScreenState extends State<MapScreen> {
     String address,
     int confirmations,
     String status,
+    String? disputeReason,
   ) async {
     final user = FirebaseAuth.instance.currentUser;
 
@@ -130,6 +153,7 @@ class _MapScreenState extends State<MapScreen> {
           ),
         ),
       );
+
       return;
     }
 
@@ -139,6 +163,8 @@ class _MapScreenState extends State<MapScreen> {
 
     var displayedConfirmations = confirmations;
     var displayedStatus = status;
+    var displayedDisputeReason = disputeReason;
+
     var isConfirming = false;
     var isReporting = false;
 
@@ -177,7 +203,8 @@ class _MapScreenState extends State<MapScreen> {
                 batch.update(
                   placeReference,
                   {
-                    'confirmations': FieldValue.increment(1),
+                    'confirmations':
+                        FieldValue.increment(1),
                     'lastConfirmedAt':
                         FieldValue.serverTimestamp(),
                     'status': nextStatus,
@@ -202,7 +229,9 @@ class _MapScreenState extends State<MapScreen> {
                 setModalState(() {
                   displayedConfirmations =
                       nextConfirmations;
+
                   displayedStatus = nextStatus;
+
                   isConfirming = false;
                   hasAlreadyConfirmed = true;
                 });
@@ -238,16 +267,37 @@ class _MapScreenState extends State<MapScreen> {
                     content: Text(message),
                   ),
                 );
+              } catch (error) {
+                if (!modalContext.mounted) {
+                  return;
+                }
+
+                setModalState(() {
+                  isConfirming = false;
+                });
+
+                ScaffoldMessenger.of(
+                  bottomSheetContext,
+                ).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      'Nie udało się zapisać potwierdzenia: '
+                      '$error',
+                    ),
+                  ),
+                );
               }
             }
 
             Future<void> reportProblem() async {
-              if (isReporting || hasAlreadyReported) {
+              if (isReporting ||
+                  hasAlreadyReported) {
                 return;
               }
 
               final report =
-                  await showModalBottomSheet<PlaceReportData>(
+                  await showModalBottomSheet<
+                      PlaceReportData>(
                 context: modalContext,
                 isScrollControlled: true,
                 showDragHandle: true,
@@ -271,23 +321,19 @@ class _MapScreenState extends State<MapScreen> {
 
                 final batch = firestore.batch();
 
-                /*
-                * Jeśli lokal nie jest jeszcze disputed,
-                * pierwsze zgłoszenie zmienia jego status.
-                */
                 if (displayedStatus != 'disputed') {
                   batch.update(
                     placeReference,
                     {
                       'status': 'disputed',
+                      'disputeReason':
+                          report.reason,
+                      'disputedAt':
+                          FieldValue.serverTimestamp(),
                     },
                   );
                 }
 
-                /*
-                * Jednocześnie zapisujemy zgłoszenie
-                * użytkownika.
-                */
                 batch.set(
                   reportReference,
                   {
@@ -310,6 +356,8 @@ class _MapScreenState extends State<MapScreen> {
                   isReporting = false;
                   hasAlreadyReported = true;
                   displayedStatus = 'disputed';
+                  displayedDisputeReason =
+                      report.reason;
                 });
 
                 ScaffoldMessenger.of(
@@ -404,9 +452,13 @@ class _MapScreenState extends State<MapScreen> {
                             FontWeight.bold,
                       ),
                     ),
+
                     const SizedBox(height: 8),
+
                     Text(address),
+
                     const SizedBox(height: 12),
+
                     Text(
                       statusLabel,
                       style: TextStyle(
@@ -419,7 +471,59 @@ class _MapScreenState extends State<MapScreen> {
                                 : Colors.blue,
                       ),
                     ),
+
+                    if (displayedStatus ==
+                        'disputed') ...[
+                      const SizedBox(height: 6),
+                      Container(
+                        width: double.infinity,
+                        padding:
+                            const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.orange
+                              .withValues(
+                            alpha: 0.10,
+                          ),
+                          borderRadius:
+                              BorderRadius.circular(
+                            10,
+                          ),
+                          border: Border.all(
+                            color: Colors.orange
+                                .withValues(
+                              alpha: 0.30,
+                            ),
+                          ),
+                        ),
+                        child: Row(
+                          crossAxisAlignment:
+                              CrossAxisAlignment
+                                  .start,
+                          children: [
+                            const Icon(
+                              Icons
+                                  .warning_amber_rounded,
+                              color:
+                                  Colors.orange,
+                              size: 20,
+                            ),
+                            const SizedBox(
+                              width: 8,
+                            ),
+                            Expanded(
+                              child: Text(
+                                _disputeReasonLabel(
+                                  displayedDisputeReason,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+
                     const SizedBox(height: 12),
+
                     const Row(
                       children: [
                         Icon(
@@ -438,12 +542,16 @@ class _MapScreenState extends State<MapScreen> {
                         ),
                       ],
                     ),
+
                     const SizedBox(height: 8),
+
                     Text(
                       'Potwierdzone: '
                       '$displayedConfirmations razy',
                     ),
+
                     const SizedBox(height: 20),
+
                     SizedBox(
                       width: double.infinity,
                       child: FilledButton(
@@ -454,13 +562,15 @@ class _MapScreenState extends State<MapScreen> {
                           foregroundColor:
                               Colors.white,
                           disabledBackgroundColor:
-                              Colors.blue.withValues(
+                              Colors.blue
+                                  .withValues(
                             alpha: 0.45,
                           ),
                           disabledForegroundColor:
                               Colors.white,
                           padding:
-                              const EdgeInsets.symmetric(
+                              const EdgeInsets
+                                  .symmetric(
                             vertical: 14,
                           ),
                         ),
@@ -491,7 +601,9 @@ class _MapScreenState extends State<MapScreen> {
                               ),
                       ),
                     ),
+
                     const SizedBox(height: 10),
+
                     SizedBox(
                       width: double.infinity,
                       child:
@@ -545,6 +657,7 @@ class _MapScreenState extends State<MapScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       extendBodyBehindAppBar: true,
+
       appBar: PreferredSize(
         preferredSize:
             const Size.fromHeight(
@@ -596,6 +709,7 @@ class _MapScreenState extends State<MapScreen> {
           ),
         ),
       ),
+
       body: StreamBuilder<
           QuerySnapshot<Map<String, dynamic>>>(
         stream: FirebaseFirestore.instance
@@ -654,6 +768,7 @@ class _MapScreenState extends State<MapScreen> {
                 userAgentPackageName:
                     'pl.freewater.app',
               ),
+
               MarkerLayer(
                 markers: places.map((doc) {
                   final data = doc.data();
@@ -677,6 +792,10 @@ class _MapScreenState extends State<MapScreen> {
                   final status =
                       data['status'] as String? ??
                           'pending';
+
+                  final disputeReason =
+                      data['disputeReason']
+                          as String?;
 
                   if (location == null) {
                     return null;
@@ -707,6 +826,7 @@ class _MapScreenState extends State<MapScreen> {
                         address,
                         confirmations,
                         status,
+                        disputeReason,
                       ),
                       child: Icon(
                         Icons.water_drop,
@@ -717,6 +837,7 @@ class _MapScreenState extends State<MapScreen> {
                   );
                 }).whereType<Marker>().toList(),
               ),
+
               RichAttributionWidget(
                 attributions: [
                   TextSourceAttribution(
