@@ -910,20 +910,22 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
           Expanded(
             child: FlutterMap(
               options: MapOptions(
-                initialCenter:
-                    const LatLng(
+                initialCenter: const LatLng(
                   54.5189,
                   18.5305,
                 ),
                 initialZoom: 14,
-                onTap:
-                    (tapPosition,
-                        point) {
+                interactionOptions: const InteractionOptions(
+                  flags:
+                      InteractiveFlag.drag |
+                      InteractiveFlag.pinchZoom |
+                      InteractiveFlag.doubleTapZoom |
+                      InteractiveFlag.scrollWheelZoom,
+                ),
+                onTap: (tapPosition, point) {
                   setState(() {
-                    _selectedLocation =
-                        point;
-                    _resolvedAddress =
-                        null;
+                    _selectedLocation = point;
+                    _resolvedAddress = null;
                   });
                 },
               ),
