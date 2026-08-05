@@ -242,14 +242,12 @@ class _MapScreenState extends State<MapScreen> {
             }
 
             Future<void> reportProblem() async {
-              if (isReporting ||
-                  hasAlreadyReported) {
+              if (isReporting || hasAlreadyReported) {
                 return;
               }
 
               final report =
-                  await showModalBottomSheet<
-                      PlaceReportData>(
+                  await showModalBottomSheet<PlaceReportData>(
                 context: modalContext,
                 isScrollControlled: true,
                 showDragHandle: true,
@@ -268,14 +266,41 @@ class _MapScreenState extends State<MapScreen> {
               });
 
               try {
-                await reportReference.set({
-                  'userId': user.uid,
-                  'reason': report.reason,
-                  'details': report.details,
-                  'createdAt':
-                      FieldValue.serverTimestamp(),
-                  'status': 'open',
-                });
+                final firestore =
+                    FirebaseFirestore.instance;
+
+                final batch = firestore.batch();
+
+                /*
+                * Jeśli lokal nie jest jeszcze disputed,
+                * pierwsze zgłoszenie zmienia jego status.
+                */
+                if (displayedStatus != 'disputed') {
+                  batch.update(
+                    placeReference,
+                    {
+                      'status': 'disputed',
+                    },
+                  );
+                }
+
+                /*
+                * Jednocześnie zapisujemy zgłoszenie
+                * użytkownika.
+                */
+                batch.set(
+                  reportReference,
+                  {
+                    'userId': user.uid,
+                    'reason': report.reason,
+                    'details': report.details,
+                    'createdAt':
+                        FieldValue.serverTimestamp(),
+                    'status': 'open',
+                  },
+                );
+
+                await batch.commit();
 
                 if (!modalContext.mounted) {
                   return;
@@ -284,6 +309,7 @@ class _MapScreenState extends State<MapScreen> {
                 setModalState(() {
                   isReporting = false;
                   hasAlreadyReported = true;
+                  displayedStatus = 'disputed';
                 });
 
                 ScaffoldMessenger.of(
@@ -306,7 +332,8 @@ class _MapScreenState extends State<MapScreen> {
 
                 final message =
                     error.code == 'permission-denied'
-                        ? 'Ten lokal został już przez Ciebie zgłoszony.'
+                        ? 'Nie udało się zapisać zgłoszenia. '
+                            'Być może ten lokal został już przez Ciebie zgłoszony.'
                         : 'Nie udało się zapisać zgłoszenia: '
                             '${error.message ?? error.code}';
 
@@ -315,6 +342,25 @@ class _MapScreenState extends State<MapScreen> {
                 ).showSnackBar(
                   SnackBar(
                     content: Text(message),
+                  ),
+                );
+              } catch (error) {
+                if (!modalContext.mounted) {
+                  return;
+                }
+
+                setModalState(() {
+                  isReporting = false;
+                });
+
+                ScaffoldMessenger.of(
+                  bottomSheetContext,
+                ).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      'Nie udało się zapisać zgłoszenia: '
+                      '$error',
+                    ),
                   ),
                 );
               }

@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 
@@ -21,8 +22,8 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
   static const double _duplicateRadiusMeters = 150;
 
   final _nameController = TextEditingController();
-
   final Distance _distanceCalculator = const Distance();
+  final MapController _mapController = MapController();
 
   LatLng? _selectedLocation;
   String? _resolvedAddress;
@@ -35,9 +36,50 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
   DateTime? _lastAddressRequest;
 
   @override
+  void initState() {
+    super.initState();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _moveToUserLocation();
+    });
+  }
+
+  @override
   void dispose() {
     _nameController.dispose();
     super.dispose();
+  }
+
+  Future<void> _moveToUserLocation() async {
+    try {
+      var permission = await Geolocator.checkPermission();
+
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition();
+
+      if (!mounted) {
+        return;
+      }
+
+      _mapController.move(
+        LatLng(
+          position.latitude,
+          position.longitude,
+        ),
+        16,
+      );
+    } catch (_) {
+      // Jeśli nie uda się pobrać lokalizacji,
+      // mapa pozostaje na lokalizacji domyślnej.
+    }
   }
 
   Future<List<NearbyPlace>> _findNearbyPlaces(
@@ -59,9 +101,7 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
 
     for (final document in snapshot.docs) {
       final data = document.data();
-
-      final location =
-          data['location'] as GeoPoint?;
+      final location = data['location'] as GeoPoint?;
 
       if (location == null) {
         continue;
@@ -72,22 +112,18 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
         location.longitude,
       );
 
-      final distanceMeters =
-          _distanceCalculator(
+      final distanceMeters = _distanceCalculator(
         selectedLocation,
         placeLocation,
       );
 
-      if (distanceMeters <=
-          _duplicateRadiusMeters) {
+      if (distanceMeters <= _duplicateRadiusMeters) {
         nearbyPlaces.add(
           NearbyPlace(
-            name:
-                data['name'] as String? ??
-                    'Nieznany lokal',
-            address:
-                data['address'] as String? ??
-                    'Brak adresu',
+            name: data['name'] as String? ??
+                'Nieznany lokal',
+            address: data['address'] as String? ??
+                'Brak adresu',
             distanceMeters: distanceMeters,
           ),
         );
@@ -108,9 +144,7 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
     LatLng selectedLocation,
   ) async {
     final nearbyPlaces =
-        await _findNearbyPlaces(
-      selectedLocation,
-    );
+        await _findNearbyPlaces(selectedLocation);
 
     if (nearbyPlaces.isEmpty) {
       return true;
@@ -120,8 +154,7 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
       return false;
     }
 
-    final shouldAddAnyway =
-        await showDialog<bool>(
+    final shouldAddAnyway = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
@@ -139,8 +172,7 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
             ),
             child: SingleChildScrollView(
               child: Column(
-                mainAxisSize:
-                    MainAxisSize.min,
+                mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment:
                     CrossAxisAlignment.start,
                 children: [
@@ -148,60 +180,44 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
                     'W promieniu 150 metrów znaleźliśmy:',
                   ),
                   const SizedBox(height: 14),
-
                   ...nearbyPlaces.take(3).map(
                     (place) {
                       return Padding(
-                        padding:
-                            const EdgeInsets.only(
+                        padding: const EdgeInsets.only(
                           bottom: 12,
                         ),
                         child: Row(
                           crossAxisAlignment:
-                              CrossAxisAlignment
-                                  .start,
+                              CrossAxisAlignment.start,
                           children: [
                             const Icon(
                               Icons.water_drop,
                               color: Colors.blue,
                               size: 22,
                             ),
-                            const SizedBox(
-                              width: 10,
-                            ),
+                            const SizedBox(width: 10),
                             Expanded(
                               child: Column(
                                 crossAxisAlignment:
-                                    CrossAxisAlignment
-                                        .start,
+                                    CrossAxisAlignment.start,
                                 children: [
                                   Text(
                                     place.name,
-                                    style:
-                                        const TextStyle(
+                                    style: const TextStyle(
                                       fontWeight:
-                                          FontWeight
-                                              .w700,
+                                          FontWeight.w700,
                                     ),
                                   ),
-                                  const SizedBox(
-                                    height: 2,
-                                  ),
-                                  Text(
-                                    place.address,
-                                  ),
-                                  const SizedBox(
-                                    height: 2,
-                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(place.address),
+                                  const SizedBox(height: 2),
                                   Text(
                                     'Około '
                                     '${place.distanceMeters.round()} m '
                                     'od wybranego miejsca',
-                                    style:
-                                        const TextStyle(
+                                    style: const TextStyle(
                                       fontSize: 12,
-                                      color:
-                                          Colors.black54,
+                                      color: Colors.black54,
                                     ),
                                   ),
                                 ],
@@ -212,13 +228,11 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
                       );
                     },
                   ),
-
                   const Text(
                     'Dodaj nowy wpis tylko wtedy, '
                     'gdy jest to inny lokal.',
                     style: TextStyle(
-                      fontWeight:
-                          FontWeight.w600,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ],
@@ -228,30 +242,19 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
           actions: [
             TextButton(
               onPressed: () {
-                Navigator.of(
-                  dialogContext,
-                ).pop(false);
+                Navigator.of(dialogContext).pop(false);
               },
-              child: const Text(
-                'Anuluj',
-              ),
+              child: const Text('Anuluj'),
             ),
             FilledButton(
-              style:
-                  FilledButton.styleFrom(
-                backgroundColor:
-                    Colors.blue,
-                foregroundColor:
-                    Colors.white,
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.blue,
+                foregroundColor: Colors.white,
               ),
               onPressed: () {
-                Navigator.of(
-                  dialogContext,
-                ).pop(true);
+                Navigator.of(dialogContext).pop(true);
               },
-              child: const Text(
-                'To inny lokal',
-              ),
+              child: const Text('To inny lokal'),
             ),
           ],
         );
@@ -265,42 +268,37 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
     Map<String, dynamic> data,
   ) {
     final address =
-        data['address']
-            as Map<String, dynamic>?;
+        data['address'] as Map<String, dynamic>?;
 
     if (address == null) {
-      return (data['display_name']
-                  as String?)
+      return (data['display_name'] as String?)
               ?.trim() ??
           '';
     }
 
-    final road =
-        (address['road'] ??
-                address['pedestrian'] ??
-                address['footway'] ??
-                address['path'] ??
-                address['square'])
-            ?.toString();
+    final road = (
+      address['road'] ??
+          address['pedestrian'] ??
+          address['footway'] ??
+          address['path'] ??
+          address['square']
+    )?.toString();
 
     final houseNumber =
-        address['house_number']
-            ?.toString();
+        address['house_number']?.toString();
 
     final postcode =
         address['postcode']?.toString();
 
-    final city =
-        (address['city'] ??
-                address['town'] ??
-                address['village'] ??
-                address['municipality'])
-            ?.toString();
+    final city = (
+      address['city'] ??
+          address['town'] ??
+          address['village'] ??
+          address['municipality']
+    )?.toString();
 
     final streetParts = <String>[
-      if (road != null &&
-          road.isNotEmpty)
-        road,
+      if (road != null && road.isNotEmpty) road,
       if (houseNumber != null &&
           houseNumber.isNotEmpty)
         houseNumber,
@@ -326,19 +324,16 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
       return readableParts.join(', ');
     }
 
-    return (data['display_name']
-                as String?)
+    return (data['display_name'] as String?)
             ?.trim() ??
         '';
   }
 
   Future<void> _resolveAddress() async {
-    final location =
-        _selectedLocation;
+    final location = _selectedLocation;
 
     if (location == null) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
             'Najpierw wskaż lokal na mapie.',
@@ -351,14 +346,11 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
     final now = DateTime.now();
 
     if (_lastAddressRequest != null) {
-      final elapsed = now.difference(
-        _lastAddressRequest!,
-      );
+      final elapsed =
+          now.difference(_lastAddressRequest!);
 
-      if (elapsed <
-          const Duration(seconds: 1)) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(
+      if (elapsed < const Duration(seconds: 1)) {
+        ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
               'Odczekaj chwilę przed kolejnym '
@@ -382,10 +374,8 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
       '/reverse',
       {
         'format': 'jsonv2',
-        'lat':
-            location.latitude.toString(),
-        'lon':
-            location.longitude.toString(),
+        'lat': location.latitude.toString(),
+        'lon': location.longitude.toString(),
         'addressdetails': '1',
         'accept-language': 'pl',
         'zoom': '18',
@@ -394,8 +384,7 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
     );
 
     try {
-      final response =
-          await http.get(uri);
+      final response = await http.get(uri);
 
       if (response.statusCode != 200) {
         throw Exception(
@@ -404,11 +393,9 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
         );
       }
 
-      final decoded =
-          jsonDecode(response.body);
+      final decoded = jsonDecode(response.body);
 
-      if (decoded
-          is! Map<String, dynamic>) {
+      if (decoded is! Map<String, dynamic>) {
         throw const FormatException(
           'Nieprawidłowa odpowiedź serwera.',
         );
@@ -421,9 +408,7 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
       }
 
       final address =
-          _buildReadableAddress(
-        decoded,
-      );
+          _buildReadableAddress(decoded);
 
       if (address.isEmpty) {
         throw Exception(
@@ -450,8 +435,7 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
         _isResolvingAddress = false;
       });
 
-      ScaffoldMessenger.of(context)
-          .showSnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             'Nie udało się pobrać adresu: '
@@ -463,21 +447,13 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
   }
 
   Future<void> _savePlace() async {
-    final name =
-        _nameController.text.trim();
-
-    final location =
-        _selectedLocation;
-
-    final address =
-        _resolvedAddress;
-
-    final user =
-        FirebaseAuth.instance.currentUser;
+    final name = _nameController.text.trim();
+    final location = _selectedLocation;
+    final address = _resolvedAddress;
+    final user = FirebaseAuth.instance.currentUser;
 
     if (user == null) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
             'Nie udało się rozpoznać użytkownika.',
@@ -488,8 +464,7 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
     }
 
     if (name.isEmpty) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
             'Podaj nazwę lokalu.',
@@ -500,8 +475,7 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
     }
 
     if (location == null) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
             'Wskaż lokal na mapie.',
@@ -511,10 +485,8 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
       return;
     }
 
-    if (address == null ||
-        address.isEmpty) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(
+    if (address == null || address.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
             'Pobierz adres dla wybranej pinezki.',
@@ -530,9 +502,7 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
 
     try {
       final shouldContinue =
-          await _checkForDuplicates(
-        location,
-      );
+          await _checkForDuplicates(location);
 
       if (!mounted) {
         return;
@@ -549,19 +519,14 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
           FirebaseFirestore.instance;
 
       final placeReference =
-          firestore
-              .collection('places')
-              .doc();
+          firestore.collection('places').doc();
 
       final confirmationReference =
           placeReference
-              .collection(
-                'userConfirmations',
-              )
+              .collection('userConfirmations')
               .doc(user.uid);
 
-      final batch =
-          firestore.batch();
+      final batch = firestore.batch();
 
       batch.set(
         placeReference,
@@ -574,10 +539,7 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
           ),
           'category': _category,
           'confirmations': 1,
-
-          // NOWE:
           'status': 'pending',
-
           'createdBy': user.uid,
           'createdAt':
               FieldValue.serverTimestamp(),
@@ -602,8 +564,7 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
       }
 
       Navigator.of(context).pop();
-    } on FirebaseException catch (
-        error) {
+    } on FirebaseException catch (error) {
       if (!mounted) {
         return;
       }
@@ -613,15 +574,13 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
       });
 
       final message =
-          error.code ==
-                  'permission-denied'
+          error.code == 'permission-denied'
               ? 'Operacja została odrzucona przez '
                   'reguły bezpieczeństwa.'
               : 'Nie udało się zapisać lokalu: '
                   '${error.message ?? error.code}';
 
-      ScaffoldMessenger.of(context)
-          .showSnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(message),
         ),
@@ -635,8 +594,7 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
         _isSaving = false;
       });
 
-      ScaffoldMessenger.of(context)
-          .showSnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             'Nie udało się sprawdzić lub '
@@ -657,14 +615,12 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title:
-            const Text('Dodaj lokal'),
+        title: const Text('Dodaj lokal'),
       ),
       body: Column(
         children: [
           Padding(
-            padding:
-                const EdgeInsets.fromLTRB(
+            padding: const EdgeInsets.fromLTRB(
               16,
               16,
               16,
@@ -673,57 +629,39 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
             child: Column(
               children: [
                 TextField(
-                  controller:
-                      _nameController,
+                  controller: _nameController,
                   textInputAction:
                       TextInputAction.done,
-                  decoration:
-                      const InputDecoration(
-                    labelText:
-                        'Nazwa lokalu',
+                  decoration: const InputDecoration(
+                    labelText: 'Nazwa lokalu',
                     hintText:
                         'Np. Bistro Zielony Talerz',
-                    border:
-                        OutlineInputBorder(),
+                    border: OutlineInputBorder(),
                   ),
                 ),
-                const SizedBox(
-                  height: 12,
-                ),
-                DropdownButtonFormField<
-                    String>(
-                  initialValue:
-                      _category,
-                  decoration:
-                      const InputDecoration(
-                    labelText:
-                        'Rodzaj lokalu',
-                    border:
-                        OutlineInputBorder(),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  initialValue: _category,
+                  decoration: const InputDecoration(
+                    labelText: 'Rodzaj lokalu',
+                    border: OutlineInputBorder(),
                   ),
                   items: const [
                     DropdownMenuItem(
-                      value:
-                          'restaurant',
-                      child: Text(
-                        'Restauracja',
-                      ),
+                      value: 'restaurant',
+                      child: Text('Restauracja'),
                     ),
                     DropdownMenuItem(
                       value: 'cafe',
-                      child: Text(
-                        'Kawiarnia',
-                      ),
+                      child: Text('Kawiarnia'),
                     ),
                     DropdownMenuItem(
                       value: 'bar',
-                      child:
-                          Text('Bar'),
+                      child: Text('Bar'),
                     ),
                     DropdownMenuItem(
                       value: 'other',
-                      child:
-                          Text('Inne'),
+                      child: Text('Inne'),
                     ),
                   ],
                   onChanged: (value) {
@@ -732,35 +670,24 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
                     }
 
                     setState(() {
-                      _category =
-                          value;
+                      _category = value;
                     });
                   },
                 ),
-                const SizedBox(
-                  height: 12,
-                ),
+                const SizedBox(height: 12),
                 Row(
                   crossAxisAlignment:
-                      CrossAxisAlignment
-                          .start,
+                      CrossAxisAlignment.start,
                   children: [
                     Icon(
                       hasSelectedLocation
-                          ? Icons
-                              .location_on
-                          : Icons
-                              .location_on_outlined,
-                      color:
-                          hasSelectedLocation
-                              ? Colors
-                                  .blue
-                              : Colors
-                                  .grey,
+                          ? Icons.location_on
+                          : Icons.location_on_outlined,
+                      color: hasSelectedLocation
+                          ? Colors.blue
+                          : Colors.grey,
                     ),
-                    const SizedBox(
-                      width: 8,
-                    ),
+                    const SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         hasSelectedLocation
@@ -772,37 +699,27 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
                     ),
                   ],
                 ),
-                const SizedBox(
-                  height: 12,
-                ),
+                const SizedBox(height: 12),
                 SizedBox(
-                  width:
-                      double.infinity,
-                  child:
-                      OutlinedButton
-                          .icon(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
                     onPressed:
                         hasSelectedLocation &&
                                 !_isResolvingAddress
                             ? _resolveAddress
                             : null,
-                    icon:
-                        _isResolvingAddress
-                            ? const SizedBox(
-                                width:
-                                    18,
-                                height:
-                                    18,
-                                child:
-                                    CircularProgressIndicator(
-                                  strokeWidth:
-                                      2,
-                                ),
-                              )
-                            : const Icon(
-                                Icons
-                                    .travel_explore,
-                              ),
+                    icon: _isResolvingAddress
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child:
+                                CircularProgressIndicator(
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : const Icon(
+                            Icons.travel_explore,
+                          ),
                     label: Text(
                       _isResolvingAddress
                           ? 'Pobieranie adresu...'
@@ -812,110 +729,77 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
                     ),
                   ),
                 ),
-                if (hasResolvedAddress)
-                  ...[
-                    const SizedBox(
-                      height: 12,
-                    ),
-                    Container(
-                      width:
-                          double.infinity,
-                      padding:
-                          const EdgeInsets
-                              .all(12),
-                      decoration:
-                          BoxDecoration(
-                        color: Colors.blue
-                            .withValues(
-                          alpha: 0.08,
-                        ),
-                        borderRadius:
-                            BorderRadius
-                                .circular(
-                          12,
-                        ),
-                        border:
-                            Border.all(
-                          color: Colors
-                              .blue
-                              .withValues(
-                            alpha:
-                                0.25,
-                          ),
+                if (hasResolvedAddress) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.withValues(
+                        alpha: 0.08,
+                      ),
+                      borderRadius:
+                          BorderRadius.circular(12),
+                      border: Border.all(
+                        color:
+                            Colors.blue.withValues(
+                          alpha: 0.25,
                         ),
                       ),
-                      child: Row(
-                        crossAxisAlignment:
-                            CrossAxisAlignment
-                                .start,
-                        children: [
-                          const Icon(
-                            Icons
-                                .check_circle,
-                            color:
-                                Colors.blue,
-                          ),
-                          const SizedBox(
-                            width: 10,
-                          ),
-                          Expanded(
-                            child:
-                                Column(
-                              crossAxisAlignment:
-                                  CrossAxisAlignment
-                                      .start,
-                              children: [
-                                const Text(
-                                  'Wykryty adres',
-                                  style:
-                                      TextStyle(
-                                    fontWeight:
-                                        FontWeight
-                                            .w700,
-                                  ),
-                                ),
-                                const SizedBox(
-                                  height:
-                                      4,
-                                ),
-                                Text(
-                                  _resolvedAddress!,
-                                ),
-                                const SizedBox(
-                                  height:
-                                      4,
-                                ),
-                                const Text(
-                                  'Adres na podstawie danych OpenStreetMap.',
-                                  style:
-                                      TextStyle(
-                                    fontSize:
-                                        12,
-                                    color:
-                                        Colors
-                                            .black54,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
                     ),
-                  ],
+                    child: Row(
+                      crossAxisAlignment:
+                          CrossAxisAlignment.start,
+                      children: [
+                        const Icon(
+                          Icons.check_circle,
+                          color: Colors.blue,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment:
+                                CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Wykryty adres',
+                                style: TextStyle(
+                                  fontWeight:
+                                      FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(_resolvedAddress!),
+                              const SizedBox(height: 4),
+                              const Text(
+                                'Adres na podstawie danych '
+                                'OpenStreetMap.',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.black54,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
-
           Expanded(
             child: FlutterMap(
+              mapController: _mapController,
               options: MapOptions(
                 initialCenter: const LatLng(
                   54.5189,
                   18.5305,
                 ),
                 initialZoom: 14,
-                interactionOptions: const InteractionOptions(
+                interactionOptions:
+                    const InteractionOptions(
                   flags:
                       InteractiveFlag.drag |
                       InteractiveFlag.pinchZoom |
@@ -937,22 +821,17 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
                   userAgentPackageName:
                       'pl.freewater.app',
                 ),
-                if (_selectedLocation !=
-                    null)
+                if (_selectedLocation != null)
                   MarkerLayer(
                     markers: [
                       Marker(
-                        point:
-                            _selectedLocation!,
+                        point: _selectedLocation!,
                         width: 50,
                         height: 50,
-                        child:
-                            const Icon(
-                          Icons
-                              .water_drop,
+                        child: const Icon(
+                          Icons.water_drop,
                           size: 42,
-                          color:
-                              Colors.blue,
+                          color: Colors.blue,
                         ),
                       ),
                     ],
@@ -967,34 +846,25 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
               ],
             ),
           ),
-
           SafeArea(
             top: false,
             child: Padding(
               padding:
-                  const EdgeInsets
-                      .all(16),
+                  const EdgeInsets.all(16),
               child: SizedBox(
-                width:
-                    double.infinity,
+                width: double.infinity,
                 child: FilledButton(
-                  style:
-                      FilledButton
-                          .styleFrom(
-                    backgroundColor:
-                        Colors.blue,
-                    foregroundColor:
-                        Colors.white,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.blue,
+                    foregroundColor: Colors.white,
                     disabledBackgroundColor:
-                        Colors.blue
-                            .withValues(
+                        Colors.blue.withValues(
                       alpha: 0.35,
                     ),
                     disabledForegroundColor:
                         Colors.white,
                     padding:
-                        const EdgeInsets
-                            .symmetric(
+                        const EdgeInsets.symmetric(
                       vertical: 16,
                     ),
                   ),
@@ -1010,10 +880,8 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
                           height: 22,
                           child:
                               CircularProgressIndicator(
-                            strokeWidth:
-                                2,
-                            color:
-                                Colors.white,
+                            strokeWidth: 2,
+                            color: Colors.white,
                           ),
                         )
                       : const Text(
