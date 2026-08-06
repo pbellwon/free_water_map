@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -44,6 +45,13 @@ class MapScreen extends StatefulWidget {
 class _MapScreenState extends State<MapScreen> {
   final MapController _mapController = MapController();
 
+  final FirebaseFunctions _functions =
+      FirebaseFunctions.instanceFor(
+    region: 'europe-central2',
+  );
+
+  bool _welcomePopupShown = false;
+
   @override
   void initState() {
     super.initState();
@@ -66,7 +74,8 @@ class _MapScreenState extends State<MapScreen> {
         return;
       }
 
-      final position = await Geolocator.getCurrentPosition();
+      final position =
+          await Geolocator.getCurrentPosition();
 
       if (!mounted) {
         return;
@@ -80,9 +89,107 @@ class _MapScreenState extends State<MapScreen> {
         14,
       );
     } catch (_) {
-      // Jeśli lokalizacji nie uda się pobrać,
-      // mapa pozostaje na lokalizacji domyślnej.
+      // Fallback pozostaje na lokalizacji domyślnej.
     }
+  }
+
+  Future<void> _showWelcomePopup(
+    int confirmedPlacesCount,
+  ) async {
+    if (!mounted || _welcomePopupShown) {
+      return;
+    }
+
+    _welcomePopupShown = true;
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(
+              maxWidth: 420,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(
+                28,
+                30,
+                28,
+                24,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.water_drop,
+                    color: Colors.blue,
+                    size: 48,
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  Text(
+                    confirmedPlacesCount == 1
+                        ? 'Jest już 1 potwierdzone miejsce, '
+                            'które podaje darmową kranówkę!'
+                        : 'Jest już $confirmedPlacesCount '
+                            'potwierdzonych miejsc, które '
+                            'podają darmową kranówkę!',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 22,
+                      height: 1.3,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  const Text(
+                    'Pomóż nam rozwijać mapę — '
+                    'potwierdzaj lokale i dodawaj nowe miejsca.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 14,
+                      height: 1.4,
+                      color: Colors.black54,
+                    ),
+                  ),
+
+                  const SizedBox(height: 24),
+
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: Colors.blue,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                          vertical: 14,
+                        ),
+                      ),
+                      onPressed: () {
+                        Navigator.of(dialogContext).pop();
+                      },
+                      child: const Text(
+                        'Sprawdź na mapie',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 
   String _disputeReasonLabel(String? reason) {
@@ -194,65 +301,81 @@ class _MapScreenState extends State<MapScreen> {
               });
 
               try {
-                final batch =
-                    FirebaseFirestore.instance.batch();
-
-                final nextConfirmations =
-                    displayedConfirmations + 1;
-
-                String nextStatus = displayedStatus;
-
-                if (displayedStatus == 'pending' &&
-                    nextConfirmations >= 2) {
-                  nextStatus = 'confirmed';
-                }
-
-                batch.update(
-                  placeReference,
-                  {
-                    'confirmations':
-                        FieldValue.increment(1),
-                    'lastConfirmedAt':
-                        FieldValue.serverTimestamp(),
-                    'status': nextStatus,
-                  },
+                final callable = _functions.httpsCallable(
+                  'confirmPlace',
                 );
 
-                batch.set(
-                  confirmationReference,
+                final result = await callable.call<
+                    Map<String, dynamic>>(
                   {
-                    'userId': user.uid,
-                    'createdAt':
-                        FieldValue.serverTimestamp(),
+                    'placeId': placeReference.id,
                   },
                 );
-
-                await batch.commit();
 
                 if (!modalContext.mounted) {
                   return;
                 }
 
+                final confirmationsRaw =
+                    result.data['confirmations'];
+
+                final statusRaw =
+                    result.data['status'];
+
+                final remainingRaw =
+                    result.data['remaining'];
+
+                final newConfirmations =
+                    confirmationsRaw is num
+                        ? confirmationsRaw.toInt()
+                        : displayedConfirmations + 1;
+
+                final newStatus =
+                    statusRaw is String
+                        ? statusRaw
+                        : displayedStatus;
+
+                final remaining =
+                    remainingRaw is num
+                        ? remainingRaw.toInt()
+                        : null;
+
                 setModalState(() {
                   displayedConfirmations =
-                      nextConfirmations;
+                      newConfirmations;
 
-                  displayedStatus = nextStatus;
+                  displayedStatus = newStatus;
 
                   isConfirming = false;
                   hasAlreadyConfirmed = true;
                 });
 
+                String message =
+                    'Dziękujemy za potwierdzenie.';
+
+                if (remaining != null) {
+                  if (remaining == 0) {
+                    message =
+                        'Potwierdzenie zapisane. '
+                        'Wykorzystałeś limit 2 potwierdzeń '
+                        'na najbliższe 24 godziny.';
+                  } else {
+                    message =
+                        'Potwierdzenie zapisane. '
+                        'Możesz potwierdzić jeszcze '
+                        '$remaining lokal '
+                        'w ciągu 24 godzin.';
+                  }
+                }
+
                 ScaffoldMessenger.of(
                   bottomSheetContext,
                 ).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                      'Dziękujemy za potwierdzenie.',
-                    ),
+                  SnackBar(
+                    content: Text(message),
                   ),
                 );
-              } on FirebaseException catch (error) {
+              } on FirebaseFunctionsException catch (error) {
                 if (!modalContext.mounted) {
                   return;
                 }
@@ -261,11 +384,53 @@ class _MapScreenState extends State<MapScreen> {
                   isConfirming = false;
                 });
 
-                final message =
-                    error.code == 'permission-denied'
-                        ? 'Operacja została odrzucona przez reguły bezpieczeństwa.'
-                        : 'Nie udało się zapisać potwierdzenia: '
-                            '${error.message ?? error.code}';
+                String message;
+
+                switch (error.code) {
+                  case 'resource-exhausted':
+                    message =
+                        'Osiągnąłeś limit 2 potwierdzeń '
+                        'w ciągu 24 godzin.';
+                    break;
+
+                  case 'already-exists':
+                    message =
+                        'Ten lokal został już przez Ciebie '
+                        'potwierdzony.';
+
+                    setModalState(() {
+                      hasAlreadyConfirmed = true;
+                    });
+                    break;
+
+                  case 'not-found':
+                    message =
+                        'Lokal nie istnieje.';
+                    break;
+
+                  case 'failed-precondition':
+                    message =
+                        error.message ??
+                            'Tego lokalu nie można obecnie '
+                            'potwierdzić.';
+                    break;
+
+                  case 'unauthenticated':
+                    message =
+                        'Nie udało się rozpoznać użytkownika. '
+                        'Odśwież aplikację i spróbuj ponownie.';
+                    break;
+
+                  case 'permission-denied':
+                    message =
+                        'Ta operacja nie jest obecnie dozwolona.';
+                    break;
+
+                  default:
+                    message =
+                        error.message ??
+                            'Nie udało się zapisać potwierdzenia.';
+                }
 
                 ScaffoldMessenger.of(
                   bottomSheetContext,
@@ -323,60 +488,76 @@ class _MapScreenState extends State<MapScreen> {
               });
 
               try {
-                final firestore =
-                    FirebaseFirestore.instance;
-
-                final batch = firestore.batch();
-
-                if (displayedStatus != 'disputed') {
-                  batch.update(
-                    placeReference,
-                    {
-                      'status': 'disputed',
-                      'disputeReason':
-                          report.reason,
-                      'disputedAt':
-                          FieldValue.serverTimestamp(),
-                    },
-                  );
-                }
-
-                batch.set(
-                  reportReference,
-                  {
-                    'userId': user.uid,
-                    'reason': report.reason,
-                    'details': report.details,
-                    'createdAt':
-                        FieldValue.serverTimestamp(),
-                    'status': 'open',
-                  },
+                final callable = _functions.httpsCallable(
+                  'reportPlace',
                 );
 
-                await batch.commit();
+                final result = await callable.call<
+                    Map<String, dynamic>>(
+                  {
+                    'placeId': placeReference.id,
+                    'reason': report.reason,
+                    'details': report.details,
+                  },
+                );
 
                 if (!modalContext.mounted) {
                   return;
                 }
+
+                final statusRaw =
+                    result.data['status'];
+
+                final disputeReasonRaw =
+                    result.data['disputeReason'];
+
+                final remainingRaw =
+                    result.data['remaining'];
+
+                final newStatus =
+                    statusRaw is String
+                        ? statusRaw
+                        : 'disputed';
+
+                final newDisputeReason =
+                    disputeReasonRaw is String
+                        ? disputeReasonRaw
+                        : report.reason;
+
+                final remaining =
+                    remainingRaw is num
+                        ? remainingRaw.toInt()
+                        : null;
 
                 setModalState(() {
                   isReporting = false;
                   hasAlreadyReported = true;
-                  displayedStatus = 'disputed';
+
+                  displayedStatus =
+                      newStatus;
+
                   displayedDisputeReason =
-                      report.reason;
+                      newDisputeReason;
                 });
+
+                String message =
+                    'Zgłoszenie zostało zapisane.';
+
+                if (remaining == 0) {
+                  message =
+                      'Zgłoszenie zapisane. '
+                      'Wykorzystałeś limit 1 zgłoszenia '
+                      'na najbliższe 24 godziny.';
+                }
 
                 ScaffoldMessenger.of(
                   bottomSheetContext,
                 ).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                      'Zgłoszenie zostało zapisane.',
-                    ),
+                  SnackBar(
+                    content: Text(message),
                   ),
                 );
-              } on FirebaseException catch (error) {
+              } on FirebaseFunctionsException catch (error) {
                 if (!modalContext.mounted) {
                   return;
                 }
@@ -385,12 +566,59 @@ class _MapScreenState extends State<MapScreen> {
                   isReporting = false;
                 });
 
-                final message =
-                    error.code == 'permission-denied'
-                        ? 'Nie udało się zapisać zgłoszenia. '
-                            'Być może ten lokal został już przez Ciebie zgłoszony.'
-                        : 'Nie udało się zapisać zgłoszenia: '
-                            '${error.message ?? error.code}';
+                String message;
+
+                switch (error.code) {
+                  case 'resource-exhausted':
+                    message =
+                        'Osiągnąłeś limit 1 zgłoszenia '
+                        'w ciągu 24 godzin.';
+                    break;
+
+                  case 'already-exists':
+                    message =
+                        'Ten lokal został już przez Ciebie '
+                        'zgłoszony.';
+
+                    setModalState(() {
+                      hasAlreadyReported = true;
+                    });
+                    break;
+
+                  case 'not-found':
+                    message =
+                        'Lokal nie istnieje.';
+                    break;
+
+                  case 'failed-precondition':
+                    message =
+                        error.message ??
+                            'Tego lokalu nie można obecnie '
+                            'zgłosić.';
+                    break;
+
+                  case 'unauthenticated':
+                    message =
+                        'Nie udało się rozpoznać użytkownika. '
+                        'Odśwież aplikację i spróbuj ponownie.';
+                    break;
+
+                  case 'permission-denied':
+                    message =
+                        'Ta operacja nie jest obecnie dozwolona.';
+                    break;
+
+                  case 'invalid-argument':
+                    message =
+                        error.message ??
+                            'Nieprawidłowe dane zgłoszenia.';
+                    break;
+
+                  default:
+                    message =
+                        error.message ??
+                            'Nie udało się zapisać zgłoszenia.';
+                }
 
                 ScaffoldMessenger.of(
                   bottomSheetContext,
@@ -425,7 +653,8 @@ class _MapScreenState extends State<MapScreen> {
 
             switch (displayedStatus) {
               case 'confirmed':
-                statusLabel = 'Potwierdzony lokal';
+                statusLabel =
+                    'Potwierdzony lokal';
                 break;
 
               case 'disputed':
@@ -434,7 +663,8 @@ class _MapScreenState extends State<MapScreen> {
                 break;
 
               default:
-                statusLabel = 'Nowe zgłoszenie';
+                statusLabel =
+                    'Nowe zgłoszenie';
             }
 
             return SafeArea(
@@ -447,7 +677,8 @@ class _MapScreenState extends State<MapScreen> {
                   24,
                 ),
                 child: Column(
-                  mainAxisSize: MainAxisSize.min,
+                  mainAxisSize:
+                      MainAxisSize.min,
                   crossAxisAlignment:
                       CrossAxisAlignment.start,
                   children: [
@@ -460,11 +691,15 @@ class _MapScreenState extends State<MapScreen> {
                       ),
                     ),
 
-                    const SizedBox(height: 8),
+                    const SizedBox(
+                      height: 8,
+                    ),
 
                     Text(address),
 
-                    const SizedBox(height: 12),
+                    const SizedBox(
+                      height: 12,
+                    ),
 
                     Text(
                       statusLabel,
@@ -481,24 +716,34 @@ class _MapScreenState extends State<MapScreen> {
 
                     if (displayedStatus ==
                         'disputed') ...[
-                      const SizedBox(height: 6),
+                      const SizedBox(
+                        height: 6,
+                      ),
                       Container(
-                        width: double.infinity,
+                        width:
+                            double.infinity,
                         padding:
-                            const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.orange
-                              .withValues(
+                            const EdgeInsets.all(
+                          12,
+                        ),
+                        decoration:
+                            BoxDecoration(
+                          color:
+                              Colors.orange
+                                  .withValues(
                             alpha: 0.10,
                           ),
                           borderRadius:
                               BorderRadius.circular(
                             10,
                           ),
-                          border: Border.all(
-                            color: Colors.orange
-                                .withValues(
-                              alpha: 0.30,
+                          border:
+                              Border.all(
+                            color:
+                                Colors.orange
+                                    .withValues(
+                              alpha:
+                                  0.30,
                             ),
                           ),
                         ),
@@ -529,7 +774,9 @@ class _MapScreenState extends State<MapScreen> {
                       ),
                     ],
 
-                    const SizedBox(height: 12),
+                    const SizedBox(
+                      height: 12,
+                    ),
 
                     const Row(
                       children: [
@@ -537,7 +784,9 @@ class _MapScreenState extends State<MapScreen> {
                           Icons.water_drop,
                           color: Colors.blue,
                         ),
-                        SizedBox(width: 8),
+                        SizedBox(
+                          width: 8,
+                        ),
                         Expanded(
                           child: Text(
                             'Darmowa woda do zamówienia',
@@ -550,20 +799,27 @@ class _MapScreenState extends State<MapScreen> {
                       ],
                     ),
 
-                    const SizedBox(height: 8),
+                    const SizedBox(
+                      height: 8,
+                    ),
 
                     Text(
                       'Potwierdzone: '
                       '$displayedConfirmations razy',
                     ),
 
-                    const SizedBox(height: 20),
+                    const SizedBox(
+                      height: 20,
+                    ),
 
                     SizedBox(
-                      width: double.infinity,
-                      child: FilledButton(
+                      width:
+                          double.infinity,
+                      child:
+                          FilledButton(
                         style:
-                            FilledButton.styleFrom(
+                            FilledButton
+                                .styleFrom(
                           backgroundColor:
                               Colors.blue,
                           foregroundColor:
@@ -571,14 +827,16 @@ class _MapScreenState extends State<MapScreen> {
                           disabledBackgroundColor:
                               Colors.blue
                                   .withValues(
-                            alpha: 0.45,
+                            alpha:
+                                0.45,
                           ),
                           disabledForegroundColor:
                               Colors.white,
                           padding:
                               const EdgeInsets
                                   .symmetric(
-                            vertical: 14,
+                            vertical:
+                                14,
                           ),
                         ),
                         onPressed:
@@ -588,52 +846,65 @@ class _MapScreenState extends State<MapScreen> {
                                         'disputed'
                                 ? null
                                 : confirmPlace,
-                        child: isConfirming
-                            ? const SizedBox(
-                                width: 22,
-                                height: 22,
-                                child:
-                                    CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : Text(
-                                displayedStatus ==
-                                        'disputed'
-                                    ? 'Potwierdzanie wstrzymane'
-                                    : hasAlreadyConfirmed
-                                        ? 'Już potwierdziłeś'
-                                        : 'Potwierdzam',
-                              ),
+                        child:
+                            isConfirming
+                                ? const SizedBox(
+                                    width:
+                                        22,
+                                    height:
+                                        22,
+                                    child:
+                                        CircularProgressIndicator(
+                                      strokeWidth:
+                                          2,
+                                      color:
+                                          Colors.white,
+                                    ),
+                                  )
+                                : Text(
+                                    displayedStatus ==
+                                            'disputed'
+                                        ? 'Potwierdzanie wstrzymane'
+                                        : hasAlreadyConfirmed
+                                            ? 'Już potwierdziłeś'
+                                            : 'Potwierdzam',
+                                  ),
                       ),
                     ),
 
-                    const SizedBox(height: 10),
+                    const SizedBox(
+                      height: 10,
+                    ),
 
                     SizedBox(
-                      width: double.infinity,
+                      width:
+                          double.infinity,
                       child:
-                          OutlinedButton.icon(
+                          OutlinedButton
+                              .icon(
                         onPressed:
                             isReporting ||
                                     hasAlreadyReported
                                 ? null
                                 : reportProblem,
-                        icon: isReporting
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child:
-                                    CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : Icon(
-                                hasAlreadyReported
-                                    ? Icons.check_circle
-                                    : Icons.flag_outlined,
-                              ),
+                        icon:
+                            isReporting
+                                ? const SizedBox(
+                                    width:
+                                        18,
+                                    height:
+                                        18,
+                                    child:
+                                        CircularProgressIndicator(
+                                      strokeWidth:
+                                          2,
+                                    ),
+                                  )
+                                : Icon(
+                                    hasAlreadyReported
+                                        ? Icons.check_circle
+                                        : Icons.flag_outlined,
+                                  ),
                         label: Text(
                           hasAlreadyReported
                               ? 'Problem już zgłoszony'
@@ -672,23 +943,27 @@ class _MapScreenState extends State<MapScreen> {
         ),
         child: ClipRect(
           child: BackdropFilter(
-            filter: ImageFilter.blur(
+            filter:
+                ImageFilter.blur(
               sigmaX: 12,
               sigmaY: 12,
             ),
             child: AppBar(
               backgroundColor:
-                  Colors.white.withValues(
+                  Colors.white
+                      .withValues(
                 alpha: 0.62,
               ),
               surfaceTintColor:
                   Colors.transparent,
               elevation: 0,
-              scrolledUnderElevation: 0,
+              scrolledUnderElevation:
+                  0,
               title: const Text(
                 'DarmowaKranówka',
                 style: TextStyle(
-                  color: Colors.blue,
+                  color:
+                      Colors.blue,
                   fontWeight:
                       FontWeight.w700,
                 ),
@@ -697,20 +972,28 @@ class _MapScreenState extends State<MapScreen> {
                 TextButton.icon(
                   onPressed:
                       _openAddPlaceScreen,
-                  icon: const Icon(
-                    Icons.add_location_alt,
-                    color: Colors.blue,
+                  icon:
+                      const Icon(
+                    Icons
+                        .add_location_alt,
+                    color:
+                        Colors.blue,
                   ),
-                  label: const Text(
+                  label:
+                      const Text(
                     'Dodaj lokal',
-                    style: TextStyle(
-                      color: Colors.blue,
+                    style:
+                        TextStyle(
+                      color:
+                          Colors.blue,
                       fontWeight:
                           FontWeight.w600,
                     ),
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(
+                  width: 12,
+                ),
               ],
             ),
           ),
@@ -718,29 +1001,38 @@ class _MapScreenState extends State<MapScreen> {
       ),
 
       body: StreamBuilder<
-          QuerySnapshot<Map<String, dynamic>>>(
-        stream: FirebaseFirestore.instance
-            .collection('places')
-            .where(
-              'status',
-              whereIn: [
-                'pending',
-                'confirmed',
-                'disputed',
-              ],
-            )
-            .snapshots(),
-        builder: (context, snapshot) {
+          QuerySnapshot<
+              Map<String, dynamic>>>(
+        stream:
+            FirebaseFirestore
+                .instance
+                .collection(
+                  'places',
+                )
+                .where(
+                  'status',
+                  whereIn: [
+                    'pending',
+                    'confirmed',
+                    'disputed',
+                  ],
+                )
+                .snapshots(),
+        builder:
+            (context, snapshot) {
           if (snapshot.hasError) {
             return Center(
               child: Text(
-                'Błąd: ${snapshot.error}',
+                'Błąd: '
+                '${snapshot.error}',
               ),
             );
           }
 
-          if (snapshot.connectionState ==
-              ConnectionState.waiting) {
+          if (snapshot
+                  .connectionState ==
+              ConnectionState
+                  .waiting) {
             return const Center(
               child:
                   CircularProgressIndicator(),
@@ -748,12 +1040,37 @@ class _MapScreenState extends State<MapScreen> {
           }
 
           final places =
-              snapshot.data?.docs ?? [];
+              snapshot.data?.docs ??
+                  [];
+
+          final confirmedPlacesCount =
+              places.where(
+            (doc) {
+              final data = doc.data();
+
+              return data['status'] ==
+                  'confirmed';
+            },
+          ).length;
+
+          if (!_welcomePopupShown) {
+            WidgetsBinding.instance
+                .addPostFrameCallback(
+              (_) {
+                _showWelcomePopup(
+                  confirmedPlacesCount,
+                );
+              },
+            );
+          }
 
           return FlutterMap(
-            mapController: _mapController,
-            options: const MapOptions(
-              initialCenter: LatLng(
+            mapController:
+                _mapController,
+            options:
+                const MapOptions(
+              initialCenter:
+                  LatLng(
                 54.5189,
                 18.5305,
               ),
@@ -761,10 +1078,14 @@ class _MapScreenState extends State<MapScreen> {
               interactionOptions:
                   InteractionOptions(
                 flags:
-                    InteractiveFlag.drag |
-                    InteractiveFlag.pinchZoom |
-                    InteractiveFlag.doubleTapZoom |
-                    InteractiveFlag.scrollWheelZoom,
+                    InteractiveFlag
+                            .drag |
+                        InteractiveFlag
+                            .pinchZoom |
+                        InteractiveFlag
+                            .doubleTapZoom |
+                        InteractiveFlag
+                            .scrollWheelZoom,
               ),
             ),
             children: [
@@ -777,72 +1098,94 @@ class _MapScreenState extends State<MapScreen> {
               ),
 
               MarkerLayer(
-                markers: places.map((doc) {
-                  final data = doc.data();
+                markers:
+                    places.map(
+                  (doc) {
+                    final data =
+                        doc.data();
 
-                  final name =
-                      data['name'] as String? ??
-                          'Nieznany lokal';
+                    final name =
+                        data['name']
+                                as String? ??
+                            'Nieznany lokal';
 
-                  final address =
-                      data['address'] as String? ??
-                          'Brak adresu';
+                    final address =
+                        data['address']
+                                as String? ??
+                            'Brak adresu';
 
-                  final location =
-                      data['location'] as GeoPoint?;
+                    final location =
+                        data['location']
+                            as GeoPoint?;
 
-                  final confirmations =
-                      (data['confirmations'] as num?)
-                              ?.toInt() ??
-                          0;
+                    final confirmations =
+                        (data['confirmations']
+                                    as num?)
+                                ?.toInt() ??
+                            0;
 
-                  final status =
-                      data['status'] as String? ??
-                          'pending';
+                    final status =
+                        data['status']
+                                as String? ??
+                            'pending';
 
-                  final disputeReason =
-                      data['disputeReason']
-                          as String?;
+                    final disputeReason =
+                        data['disputeReason']
+                            as String?;
 
-                  if (location == null) {
-                    return null;
-                  }
+                    if (location ==
+                        null) {
+                      return null;
+                    }
 
-                  final markerColor =
-                      status == 'disputed'
-                          ? Colors.orange
-                          : status == 'pending'
-                              ? Colors.blueGrey
-                                  .shade300
-                              : Colors.blue
-                                  .shade700;
+                    final markerColor =
+                        status ==
+                                'disputed'
+                            ? Colors.orange
+                            : status ==
+                                    'pending'
+                                ? Colors
+                                    .blueGrey
+                                    .shade300
+                                : Colors
+                                    .blue
+                                    .shade700;
 
-                  return Marker(
-                    point: LatLng(
-                      location.latitude,
-                      location.longitude,
-                    ),
-                    width: 50,
-                    height: 50,
-                    child: GestureDetector(
-                      onTap: () =>
-                          _showPlace(
-                        context,
-                        doc.reference,
-                        name,
-                        address,
-                        confirmations,
-                        status,
-                        disputeReason,
+                    return Marker(
+                      point: LatLng(
+                        location
+                            .latitude,
+                        location
+                            .longitude,
                       ),
-                      child: Icon(
-                        Icons.water_drop,
-                        size: 42,
-                        color: markerColor,
+                      width: 50,
+                      height: 50,
+                      child:
+                          GestureDetector(
+                        onTap: () =>
+                            _showPlace(
+                          context,
+                          doc.reference,
+                          name,
+                          address,
+                          confirmations,
+                          status,
+                          disputeReason,
+                        ),
+                        child: Icon(
+                          Icons
+                              .water_drop,
+                          size: 42,
+                          color:
+                              markerColor,
+                        ),
                       ),
-                    ),
-                  );
-                }).whereType<Marker>().toList(),
+                    );
+                  },
+                )
+                        .whereType<
+                            Marker>()
+                        .toList(),
               ),
 
               RichAttributionWidget(
