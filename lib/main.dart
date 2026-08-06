@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
@@ -20,6 +21,12 @@ Future<void> main() async {
 
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
+  );
+
+  await FirebaseAppCheck.instance.activate(
+    providerWeb: ReCaptchaEnterpriseProvider(
+      '6LcV9XctAAAAAPq6-9vgUa0MilY_scUZZ-_OW2aA',
+    ),
   );
 
   await AuthenticationService.ensureAnonymousUser();
