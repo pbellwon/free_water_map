@@ -28,9 +28,7 @@ Future<void> main() async {
 
   await FirebaseAppCheck.instance.activate(
     providerWeb: ReCaptchaEnterpriseProvider(
-      // WAŻNE:
-      // WSTAW TUTAJ TEN SAM PRAWDZIWY SITE KEY,
-      // KTÓRY MASZ W OBECNYM DZIAŁAJĄCYM main.dart.
+      // ZOSTAW TUTAJ SWÓJ OBECNY PRAWDZIWY SITE KEY.
       '6LcV9XctAAAAAPq6-9vgUa0MilY_scUZZ-_OW2aA',
     ),
   );
@@ -1343,6 +1341,7 @@ class _MapScreenState extends State<MapScreen> {
                 18.5305,
               ),
               initialZoom: 13,
+
               interactionOptions:
                   const InteractionOptions(
                 flags:
@@ -1394,8 +1393,8 @@ class _MapScreenState extends State<MapScreen> {
 
                   size:
                       const Size(
-                    44,
-                    44,
+                    58,
+                    58,
                   ),
 
                   alignment:
@@ -1413,45 +1412,47 @@ class _MapScreenState extends State<MapScreen> {
                     context,
                     clusterMarkers,
                   ) {
-                    return Container(
-                      decoration:
-                          BoxDecoration(
-                        color:
-                            Colors.blue.shade700,
-                        shape:
-                            BoxShape.circle,
-                        border: Border.all(
+                    return Stack(
+                      alignment:
+                          Alignment.center,
+                      children: [
+                        Icon(
+                          Icons.water_drop,
+                          size: 56,
                           color:
-                              Colors.white,
-                          width: 2,
+                              Colors.blue.shade700,
+                          shadows: const [
+                            Shadow(
+                              blurRadius: 6,
+                              offset:
+                                  Offset(
+                                0,
+                                2,
+                              ),
+                              color:
+                                  Colors.black26,
+                            ),
+                          ],
                         ),
-                        boxShadow: const [
-                          BoxShadow(
-                            blurRadius: 5,
-                            color:
-                                Colors.black26,
-                            offset:
-                                Offset(
-                              0,
-                              2,
+                        Padding(
+                          padding:
+                              const EdgeInsets.only(
+                            bottom: 5,
+                          ),
+                          child: Text(
+                            clusterMarkers.length
+                                .toString(),
+                            style:
+                                const TextStyle(
+                              color:
+                                  Colors.white,
+                              fontWeight:
+                                  FontWeight.w800,
+                              fontSize: 14,
                             ),
                           ),
-                        ],
-                      ),
-                      child: Center(
-                        child: Text(
-                          clusterMarkers.length
-                              .toString(),
-                          style:
-                              const TextStyle(
-                            color:
-                                Colors.white,
-                            fontWeight:
-                                FontWeight.w700,
-                            fontSize: 14,
-                          ),
                         ),
-                      ),
+                      ],
                     );
                   },
                 ),

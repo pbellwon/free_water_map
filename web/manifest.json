@@ -1,14 +1,14 @@
 {
-    "name": "free_water_map",
-    "short_name": "free_water_map",
+    "name": "DarmowaKranówka",
+    "short_name": "DarmowaKranówka",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#FFFFFF",
+    "theme_color": "#2196F3",
+    "description": "Mapa miejsc, które podają darmową wodę z kranu.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
-    "icons": [
+      "icons": [
         {
             "src": "icons/Icon-192.png",
             "sizes": "192x192",
