@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -7,6 +8,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:flutter_map_marker_cluster/flutter_map_marker_cluster.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 
@@ -26,6 +28,9 @@ Future<void> main() async {
 
   await FirebaseAppCheck.instance.activate(
     providerWeb: ReCaptchaEnterpriseProvider(
+      // WAŻNE:
+      // WSTAW TUTAJ TEN SAM PRAWDZIWY SITE KEY,
+      // KTÓRY MASZ W OBECNYM DZIAŁAJĄCYM main.dart.
       '6LcV9XctAAAAAPq6-9vgUa0MilY_scUZZ-_OW2aA',
     ),
   );
@@ -52,10 +57,11 @@ class _MapScreenState extends State<MapScreen> {
 
   List<QueryDocumentSnapshot<Map<String, dynamic>>> _places = [];
 
+  Timer? _mapMoveDebounce;
+
   bool _welcomePopupShown = false;
   bool _mapReady = false;
   bool _isLoadingPlaces = false;
-  bool _showSearchAreaButton = false;
 
   @override
   void initState() {
@@ -64,6 +70,12 @@ class _MapScreenState extends State<MapScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _moveToUserLocation();
     });
+  }
+
+  @override
+  void dispose() {
+    _mapMoveDebounce?.cancel();
+    super.dispose();
   }
 
   Future<void> _moveToUserLocation() async {
@@ -102,9 +114,24 @@ class _MapScreenState extends State<MapScreen> {
         await _loadPlacesForCurrentView();
       }
     } catch (_) {
-      // Jeśli lokalizacja nie jest dostępna,
+      // Jeśli lokalizacja jest niedostępna,
       // zostajemy na domyślnej lokalizacji.
     }
+  }
+
+  void _schedulePlacesReload() {
+    _mapMoveDebounce?.cancel();
+
+    _mapMoveDebounce = Timer(
+      const Duration(milliseconds: 700),
+      () {
+        if (!mounted || !_mapReady) {
+          return;
+        }
+
+        _loadPlacesForCurrentView();
+      },
+    );
   }
 
   Future<void> _loadInitialData() async {
@@ -159,9 +186,11 @@ class _MapScreenState extends State<MapScreen> {
     final east =
         bounds.northEast.longitude;
 
-    setState(() {
-      _isLoadingPlaces = true;
-    });
+    if (mounted) {
+      setState(() {
+        _isLoadingPlaces = true;
+      });
+    }
 
     try {
       final snapshot =
@@ -200,7 +229,6 @@ class _MapScreenState extends State<MapScreen> {
       setState(() {
         _places = snapshot.docs;
         _isLoadingPlaces = false;
-        _showSearchAreaButton = false;
       });
     } on FirebaseException catch (error) {
       if (!mounted) {
@@ -334,13 +362,15 @@ class _MapScreenState extends State<MapScreen> {
   String _disputeReasonLabel(String? reason) {
     switch (reason) {
       case 'no_free_water':
-        return 'Zgłoszono, że lokal może już nie podawać darmowej wody';
+        return 'Zgłoszono, że lokal może już nie podawać '
+            'darmowej wody';
 
       case 'wrong_location':
         return 'Zgłoszono błędny adres lub pozycję lokalu';
 
       case 'closed':
-        return 'Zgłoszono, że lokal może być zamknięty lub nie istnieć';
+        return 'Zgłoszono, że lokal może być zamknięty '
+            'lub nie istnieć';
 
       case 'duplicate':
         return 'Zgłoszono, że ten wpis może być duplikatem';
@@ -353,6 +383,118 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
+  int _markerPriority(String status) {
+    switch (status) {
+      case 'confirmed':
+        return 3;
+
+      case 'disputed':
+        return 2;
+
+      case 'pending':
+      default:
+        return 1;
+    }
+  }
+
+  List<Marker> _buildMarkers() {
+    final sortedPlaces = [..._places];
+
+    sortedPlaces.sort(
+      (first, second) {
+        final firstStatus =
+            first.data()['status'] as String? ??
+                'pending';
+
+        final secondStatus =
+            second.data()['status'] as String? ??
+                'pending';
+
+        return _markerPriority(firstStatus).compareTo(
+          _markerPriority(secondStatus),
+        );
+      },
+    );
+
+    final markers = <Marker>[];
+
+    for (final doc in sortedPlaces) {
+      final data = doc.data();
+
+      final name =
+          data['name'] as String? ??
+              'Nieznany lokal';
+
+      final address =
+          data['address'] as String? ??
+              'Brak adresu';
+
+      final location =
+          data['location'] as GeoPoint?;
+
+      if (location == null) {
+        continue;
+      }
+
+      final confirmations =
+          (data['confirmations'] as num?)
+                  ?.toInt() ??
+              0;
+
+      final status =
+          data['status'] as String? ??
+              'pending';
+
+      final disputeReason =
+          data['disputeReason'] as String?;
+
+      final Color markerColor;
+
+      switch (status) {
+        case 'disputed':
+          markerColor = Colors.orange;
+          break;
+
+        case 'confirmed':
+          markerColor = Colors.blue.shade700;
+          break;
+
+        case 'pending':
+        default:
+          markerColor = Colors.blueGrey.shade300;
+      }
+
+      markers.add(
+        Marker(
+          point: LatLng(
+            location.latitude,
+            location.longitude,
+          ),
+          width: 50,
+          height: 50,
+          child: GestureDetector(
+            onTap: () => _showPlace(
+              context,
+              doc.reference,
+              name,
+              address,
+              confirmations,
+              status,
+              disputeReason,
+            ),
+            child: Icon(
+              Icons.water_drop,
+              size: 42,
+              color: markerColor,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return markers;
+  }
+
   Future<void> _showPlace(
     BuildContext context,
     DocumentReference<Map<String, dynamic>> placeReference,
@@ -362,7 +504,8 @@ class _MapScreenState extends State<MapScreen> {
     String status,
     String? disputeReason,
   ) async {
-    final user = FirebaseAuth.instance.currentUser;
+    final user =
+        FirebaseAuth.instance.currentUser;
 
     if (user == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -375,25 +518,31 @@ class _MapScreenState extends State<MapScreen> {
       return;
     }
 
-    final confirmationReference = placeReference
-        .collection('userConfirmations')
-        .doc(user.uid);
+    final confirmationReference =
+        placeReference
+            .collection('userConfirmations')
+            .doc(user.uid);
 
-    final reportReference = placeReference
-        .collection('reports')
-        .doc(user.uid);
+    final reportReference =
+        placeReference
+            .collection('reports')
+            .doc(user.uid);
 
     bool hasAlreadyConfirmed;
     bool hasAlreadyReported;
 
     try {
-      final results = await Future.wait([
+      final results =
+          await Future.wait([
         confirmationReference.get(),
         reportReference.get(),
       ]);
 
-      hasAlreadyConfirmed = results[0].exists;
-      hasAlreadyReported = results[1].exists;
+      hasAlreadyConfirmed =
+          results[0].exists;
+
+      hasAlreadyReported =
+          results[1].exists;
     } catch (error) {
       if (!context.mounted) {
         return;
@@ -414,9 +563,14 @@ class _MapScreenState extends State<MapScreen> {
       return;
     }
 
-    var displayedConfirmations = confirmations;
-    var displayedStatus = status;
-    var displayedDisputeReason = disputeReason;
+    var displayedConfirmations =
+        confirmations;
+
+    var displayedStatus =
+        status;
+
+    var displayedDisputeReason =
+        disputeReason;
 
     var isConfirming = false;
     var isReporting = false;
@@ -430,7 +584,10 @@ class _MapScreenState extends State<MapScreen> {
       isScrollControlled: true,
       builder: (bottomSheetContext) {
         return StatefulBuilder(
-          builder: (modalContext, setModalState) {
+          builder: (
+            modalContext,
+            setModalState,
+          ) {
             void showModalMessage(
               String message, {
               required bool isError,
@@ -463,7 +620,8 @@ class _MapScreenState extends State<MapScreen> {
                     await callable.call<
                         Map<String, dynamic>>(
                   {
-                    'placeId': placeReference.id,
+                    'placeId':
+                        placeReference.id,
                   },
                 );
 
@@ -472,7 +630,8 @@ class _MapScreenState extends State<MapScreen> {
                 }
 
                 final confirmationsRaw =
-                    result.data['confirmations'];
+                    result.data[
+                        'confirmations'];
 
                 final statusRaw =
                     result.data['status'];
@@ -482,8 +641,10 @@ class _MapScreenState extends State<MapScreen> {
 
                 final newConfirmations =
                     confirmationsRaw is num
-                        ? confirmationsRaw.toInt()
-                        : displayedConfirmations + 1;
+                        ? confirmationsRaw
+                            .toInt()
+                        : displayedConfirmations +
+                            1;
 
                 final newStatus =
                     statusRaw is String
@@ -525,6 +686,8 @@ class _MapScreenState extends State<MapScreen> {
                   message,
                   isError: false,
                 );
+
+                _loadPlacesForCurrentView();
               } on FirebaseFunctionsException catch (error) {
                 if (!modalContext.mounted) {
                   return;
@@ -549,7 +712,8 @@ class _MapScreenState extends State<MapScreen> {
                         'potwierdzony.';
 
                     setModalState(() {
-                      hasAlreadyConfirmed = true;
+                      hasAlreadyConfirmed =
+                          true;
                     });
                     break;
 
@@ -562,7 +726,7 @@ class _MapScreenState extends State<MapScreen> {
                     message =
                         error.message ??
                             'Tego lokalu nie można obecnie '
-                            'potwierdzić.';
+                                'potwierdzić.';
                     break;
 
                   case 'unauthenticated':
@@ -579,7 +743,8 @@ class _MapScreenState extends State<MapScreen> {
                   default:
                     message =
                         error.message ??
-                            'Nie udało się zapisać potwierdzenia.';
+                            'Nie udało się zapisać '
+                                'potwierdzenia.';
                 }
 
                 showModalMessage(
@@ -639,9 +804,12 @@ class _MapScreenState extends State<MapScreen> {
                     await callable.call<
                         Map<String, dynamic>>(
                   {
-                    'placeId': placeReference.id,
-                    'reason': report.reason,
-                    'details': report.details,
+                    'placeId':
+                        placeReference.id,
+                    'reason':
+                        report.reason,
+                    'details':
+                        report.details,
                   },
                 );
 
@@ -653,7 +821,8 @@ class _MapScreenState extends State<MapScreen> {
                     result.data['status'];
 
                 final disputeReasonRaw =
-                    result.data['disputeReason'];
+                    result.data[
+                        'disputeReason'];
 
                 final remainingRaw =
                     result.data['remaining'];
@@ -698,6 +867,8 @@ class _MapScreenState extends State<MapScreen> {
                   message,
                   isError: false,
                 );
+
+                _loadPlacesForCurrentView();
               } on FirebaseFunctionsException catch (error) {
                 if (!modalContext.mounted) {
                   return;
@@ -722,7 +893,8 @@ class _MapScreenState extends State<MapScreen> {
                         'zgłoszony.';
 
                     setModalState(() {
-                      hasAlreadyReported = true;
+                      hasAlreadyReported =
+                          true;
                     });
                     break;
 
@@ -735,7 +907,7 @@ class _MapScreenState extends State<MapScreen> {
                     message =
                         error.message ??
                             'Tego lokalu nie można obecnie '
-                            'zgłosić.';
+                                'zgłosić.';
                     break;
 
                   case 'unauthenticated':
@@ -802,7 +974,8 @@ class _MapScreenState extends State<MapScreen> {
             return SafeArea(
               top: false,
               child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(
+                padding:
+                    const EdgeInsets.fromLTRB(
                   24,
                   8,
                   24,
@@ -822,13 +995,9 @@ class _MapScreenState extends State<MapScreen> {
                             FontWeight.bold,
                       ),
                     ),
-
                     const SizedBox(height: 8),
-
                     Text(address),
-
                     const SizedBox(height: 12),
-
                     Text(
                       statusLabel,
                       style: TextStyle(
@@ -841,15 +1010,15 @@ class _MapScreenState extends State<MapScreen> {
                                 : Colors.blue,
                       ),
                     ),
-
                     if (displayedStatus ==
                         'disputed') ...[
                       const SizedBox(height: 6),
-
                       Container(
                         width: double.infinity,
                         padding:
-                            const EdgeInsets.all(12),
+                            const EdgeInsets.all(
+                          12,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.orange
                               .withValues(
@@ -877,7 +1046,9 @@ class _MapScreenState extends State<MapScreen> {
                                   Colors.orange,
                               size: 20,
                             ),
-                            const SizedBox(width: 8),
+                            const SizedBox(
+                              width: 8,
+                            ),
                             Expanded(
                               child: Text(
                                 _disputeReasonLabel(
@@ -889,9 +1060,7 @@ class _MapScreenState extends State<MapScreen> {
                         ),
                       ),
                     ],
-
                     const SizedBox(height: 12),
-
                     const Row(
                       children: [
                         Icon(
@@ -910,27 +1079,27 @@ class _MapScreenState extends State<MapScreen> {
                         ),
                       ],
                     ),
-
                     const SizedBox(height: 8),
-
                     Text(
                       'Potwierdzone: '
                       '$displayedConfirmations razy',
                     ),
-
                     if (modalMessage != null) ...[
                       const SizedBox(height: 16),
-
                       Container(
                         width: double.infinity,
                         padding:
-                            const EdgeInsets.all(12),
+                            const EdgeInsets.all(
+                          12,
+                        ),
                         decoration: BoxDecoration(
                           color: modalMessageIsError
-                              ? Colors.red.withValues(
+                              ? Colors.red
+                                  .withValues(
                                   alpha: 0.08,
                                 )
-                              : Colors.blue.withValues(
+                              : Colors.blue
+                                  .withValues(
                                   alpha: 0.08,
                                 ),
                           borderRadius:
@@ -939,10 +1108,12 @@ class _MapScreenState extends State<MapScreen> {
                           ),
                           border: Border.all(
                             color: modalMessageIsError
-                                ? Colors.red.withValues(
+                                ? Colors.red
+                                    .withValues(
                                     alpha: 0.25,
                                   )
-                                : Colors.blue.withValues(
+                                : Colors.blue
+                                    .withValues(
                                     alpha: 0.25,
                                   ),
                           ),
@@ -953,15 +1124,19 @@ class _MapScreenState extends State<MapScreen> {
                           children: [
                             Icon(
                               modalMessageIsError
-                                  ? Icons.error_outline
+                                  ? Icons
+                                      .error_outline
                                   : Icons
                                       .check_circle_outline,
-                              color: modalMessageIsError
-                                  ? Colors.red
-                                  : Colors.blue,
+                              color:
+                                  modalMessageIsError
+                                      ? Colors.red
+                                      : Colors.blue,
                               size: 20,
                             ),
-                            const SizedBox(width: 8),
+                            const SizedBox(
+                              width: 8,
+                            ),
                             Expanded(
                               child: Text(
                                 modalMessage!,
@@ -981,9 +1156,7 @@ class _MapScreenState extends State<MapScreen> {
                         ),
                       ),
                     ],
-
                     const SizedBox(height: 20),
-
                     SizedBox(
                       width: double.infinity,
                       child: FilledButton(
@@ -994,15 +1167,13 @@ class _MapScreenState extends State<MapScreen> {
                           foregroundColor:
                               Colors.white,
                           disabledBackgroundColor:
-                              Colors.blue
-                                  .withValues(
+                              Colors.blue.withValues(
                             alpha: 0.45,
                           ),
                           disabledForegroundColor:
                               Colors.white,
                           padding:
-                              const EdgeInsets
-                                  .symmetric(
+                              const EdgeInsets.symmetric(
                             vertical: 14,
                           ),
                         ),
@@ -1020,7 +1191,8 @@ class _MapScreenState extends State<MapScreen> {
                                 child:
                                     CircularProgressIndicator(
                                   strokeWidth: 2,
-                                  color: Colors.white,
+                                  color:
+                                      Colors.white,
                                 ),
                               )
                             : Text(
@@ -1033,9 +1205,7 @@ class _MapScreenState extends State<MapScreen> {
                               ),
                       ),
                     ),
-
                     const SizedBox(height: 10),
-
                     SizedBox(
                       width: double.infinity,
                       child:
@@ -1056,8 +1226,10 @@ class _MapScreenState extends State<MapScreen> {
                               )
                             : Icon(
                                 hasAlreadyReported
-                                    ? Icons.check_circle
-                                    : Icons.flag_outlined,
+                                    ? Icons
+                                        .check_circle
+                                    : Icons
+                                        .flag_outlined,
                               ),
                         label: Text(
                           hasAlreadyReported
@@ -1077,16 +1249,25 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   void _openAddPlaceScreen() {
-    Navigator.of(context).push(
+    Navigator.of(context)
+        .push(
       MaterialPageRoute(
         builder: (context) =>
             const AddPlaceScreen(),
       ),
-    );
+    )
+        .then((_) {
+      if (mounted) {
+        _loadPlacesForCurrentView();
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    final markers =
+        _buildMarkers();
+
     return Scaffold(
       extendBodyBehindAppBar: true,
 
@@ -1104,8 +1285,7 @@ class _MapScreenState extends State<MapScreen> {
             ),
             child: AppBar(
               backgroundColor:
-                  Colors.white
-                      .withValues(
+                  Colors.white.withValues(
                 alpha: 0.62,
               ),
               surfaceTintColor:
@@ -1116,8 +1296,7 @@ class _MapScreenState extends State<MapScreen> {
               title: const Text(
                 'DarmowaKranówka',
                 style: TextStyle(
-                  color:
-                      Colors.blue,
+                  color: Colors.blue,
                   fontWeight:
                       FontWeight.w700,
                 ),
@@ -1145,9 +1324,7 @@ class _MapScreenState extends State<MapScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(
-                  width: 12,
-                ),
+                const SizedBox(width: 12),
               ],
             ),
           ),
@@ -1166,14 +1343,16 @@ class _MapScreenState extends State<MapScreen> {
                 18.5305,
               ),
               initialZoom: 13,
-
               interactionOptions:
                   const InteractionOptions(
                 flags:
                     InteractiveFlag.drag |
-                    InteractiveFlag.pinchZoom |
-                    InteractiveFlag.doubleTapZoom |
-                    InteractiveFlag.scrollWheelZoom,
+                    InteractiveFlag
+                        .pinchZoom |
+                    InteractiveFlag
+                        .doubleTapZoom |
+                    InteractiveFlag
+                        .scrollWheelZoom,
               ),
 
               onMapReady: () {
@@ -1193,12 +1372,7 @@ class _MapScreenState extends State<MapScreen> {
                   return;
                 }
 
-                if (!_showSearchAreaButton &&
-                    mounted) {
-                  setState(() {
-                    _showSearchAreaButton = true;
-                  });
-                }
+                _schedulePlacesReload();
               },
             ),
 
@@ -1211,92 +1385,76 @@ class _MapScreenState extends State<MapScreen> {
                     'pl.freewater.app',
               ),
 
-              MarkerLayer(
-                markers:
-                    _places.map(
-                  (doc) {
-                    final data =
-                        doc.data();
+              MarkerClusterLayerWidget(
+                options:
+                    MarkerClusterLayerOptions(
+                  markers: markers,
 
-                    final name =
-                        data['name']
-                                as String? ??
-                            'Nieznany lokal';
+                  maxClusterRadius: 50,
 
-                    final address =
-                        data['address']
-                                as String? ??
-                            'Brak adresu';
+                  size:
+                      const Size(
+                    44,
+                    44,
+                  ),
 
-                    final location =
-                        data['location']
-                            as GeoPoint?;
+                  alignment:
+                      Alignment.center,
 
-                    final confirmations =
-                        (data['confirmations']
-                                    as num?)
-                                ?.toInt() ??
-                            0;
+                  padding:
+                      const EdgeInsets.all(
+                    50,
+                  ),
 
-                    final status =
-                        data['status']
-                                as String? ??
-                            'pending';
+                  maxZoom: 17,
 
-                    final disputeReason =
-                        data['disputeReason']
-                            as String?;
-
-                    if (location ==
-                        null) {
-                      return null;
-                    }
-
-                    final markerColor =
-                        status ==
-                                'disputed'
-                            ? Colors.orange
-                            : status ==
-                                    'pending'
-                                ? Colors
-                                    .blueGrey
-                                    .shade300
-                                : Colors
-                                    .blue
-                                    .shade700;
-
-                    return Marker(
-                      point: LatLng(
-                        location.latitude,
-                        location.longitude,
-                      ),
-                      width: 50,
-                      height: 50,
-                      child:
-                          GestureDetector(
-                        onTap: () =>
-                            _showPlace(
-                          context,
-                          doc.reference,
-                          name,
-                          address,
-                          confirmations,
-                          status,
-                          disputeReason,
-                        ),
-                        child: Icon(
-                          Icons.water_drop,
-                          size: 42,
+                  builder:
+                      (
+                    context,
+                    clusterMarkers,
+                  ) {
+                    return Container(
+                      decoration:
+                          BoxDecoration(
+                        color:
+                            Colors.blue.shade700,
+                        shape:
+                            BoxShape.circle,
+                        border: Border.all(
                           color:
-                              markerColor,
+                              Colors.white,
+                          width: 2,
+                        ),
+                        boxShadow: const [
+                          BoxShadow(
+                            blurRadius: 5,
+                            color:
+                                Colors.black26,
+                            offset:
+                                Offset(
+                              0,
+                              2,
+                            ),
+                          ),
+                        ],
+                      ),
+                      child: Center(
+                        child: Text(
+                          clusterMarkers.length
+                              .toString(),
+                          style:
+                              const TextStyle(
+                            color:
+                                Colors.white,
+                            fontWeight:
+                                FontWeight.w700,
+                            fontSize: 14,
+                          ),
                         ),
                       ),
                     );
                   },
-                )
-                        .whereType<
-                            Marker>()
-                        .toList(),
+                ),
               ),
 
               RichAttributionWidget(
@@ -1309,55 +1467,52 @@ class _MapScreenState extends State<MapScreen> {
             ],
           ),
 
-          if (_showSearchAreaButton ||
-              _isLoadingPlaces)
+          if (_isLoadingPlaces)
             Positioned(
               top:
-                  MediaQuery.paddingOf(context)
-                          .top +
+                  MediaQuery.paddingOf(
+                        context,
+                      ).top +
                       kToolbarHeight +
-                      14,
+                      12,
               left: 0,
               right: 0,
-              child: Center(
-                child: FilledButton.icon(
-                  style:
-                      FilledButton.styleFrom(
-                    backgroundColor:
-                        Colors.blue,
-                    foregroundColor:
-                        Colors.white,
-                    elevation: 4,
-                    padding:
-                        const EdgeInsets
-                            .symmetric(
-                      horizontal: 18,
-                      vertical: 12,
-                    ),
+              child: const Center(
+                child: Material(
+                  elevation: 3,
+                  borderRadius:
+                      BorderRadius.all(
+                    Radius.circular(20),
                   ),
-                  onPressed:
-                      _isLoadingPlaces
-                          ? null
-                          : _loadPlacesForCurrentView,
-                  icon:
-                      _isLoadingPlaces
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child:
-                                  CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color:
-                                    Colors.white,
-                              ),
-                            )
-                          : const Icon(
-                              Icons.refresh,
-                            ),
-                  label: Text(
-                    _isLoadingPlaces
-                        ? 'Szukam...'
-                        : 'Szukaj w tym obszarze',
+                  child: Padding(
+                    padding:
+                        EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 8,
+                    ),
+                    child: Row(
+                      mainAxisSize:
+                          MainAxisSize.min,
+                      children: [
+                        SizedBox(
+                          width: 16,
+                          height: 16,
+                          child:
+                              CircularProgressIndicator(
+                            strokeWidth: 2,
+                          ),
+                        ),
+                        SizedBox(width: 8),
+                        Text(
+                          'Aktualizuję lokale...',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight:
+                                FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
