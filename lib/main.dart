@@ -50,7 +50,12 @@ class _MapScreenState extends State<MapScreen> {
     region: 'europe-central2',
   );
 
+  List<QueryDocumentSnapshot<Map<String, dynamic>>> _places = [];
+
   bool _welcomePopupShown = false;
+  bool _mapReady = false;
+  bool _isLoadingPlaces = false;
+  bool _showSearchAreaButton = false;
 
   @override
   void initState() {
@@ -88,8 +93,148 @@ class _MapScreenState extends State<MapScreen> {
         ),
         14,
       );
+
+      if (_mapReady) {
+        await Future.delayed(
+          const Duration(milliseconds: 250),
+        );
+
+        await _loadPlacesForCurrentView();
+      }
     } catch (_) {
-      // Fallback pozostaje na lokalizacji domyślnej.
+      // Jeśli lokalizacja nie jest dostępna,
+      // zostajemy na domyślnej lokalizacji.
+    }
+  }
+
+  Future<void> _loadInitialData() async {
+    await _loadConfirmedPlacesCount();
+    await _loadPlacesForCurrentView();
+  }
+
+  Future<void> _loadConfirmedPlacesCount() async {
+    try {
+      final result = await FirebaseFirestore.instance
+          .collection('places')
+          .where(
+            'status',
+            isEqualTo: 'confirmed',
+          )
+          .count()
+          .get();
+
+      if (!mounted) {
+        return;
+      }
+
+      final count = result.count ?? 0;
+
+      await _showWelcomePopup(count);
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      await _showWelcomePopup(0);
+    }
+  }
+
+  Future<void> _loadPlacesForCurrentView() async {
+    if (!_mapReady || _isLoadingPlaces) {
+      return;
+    }
+
+    final bounds =
+        _mapController.camera.visibleBounds;
+
+    final south =
+        bounds.southWest.latitude;
+
+    final north =
+        bounds.northEast.latitude;
+
+    final west =
+        bounds.southWest.longitude;
+
+    final east =
+        bounds.northEast.longitude;
+
+    setState(() {
+      _isLoadingPlaces = true;
+    });
+
+    try {
+      final snapshot =
+          await FirebaseFirestore.instance
+              .collection('places')
+              .where(
+                'status',
+                whereIn: [
+                  'pending',
+                  'confirmed',
+                  'disputed',
+                ],
+              )
+              .where(
+                'lat',
+                isGreaterThanOrEqualTo: south,
+              )
+              .where(
+                'lat',
+                isLessThanOrEqualTo: north,
+              )
+              .where(
+                'lng',
+                isGreaterThanOrEqualTo: west,
+              )
+              .where(
+                'lng',
+                isLessThanOrEqualTo: east,
+              )
+              .get();
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _places = snapshot.docs;
+        _isLoadingPlaces = false;
+        _showSearchAreaButton = false;
+      });
+    } on FirebaseException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _isLoadingPlaces = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Nie udało się pobrać lokali: '
+            '${error.message ?? error.code}',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _isLoadingPlaces = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Nie udało się pobrać lokali: $error',
+          ),
+        ),
+      );
     }
   }
 
@@ -261,6 +406,7 @@ class _MapScreenState extends State<MapScreen> {
           ),
         ),
       );
+
       return;
     }
 
@@ -308,12 +454,14 @@ class _MapScreenState extends State<MapScreen> {
               });
 
               try {
-                final callable = _functions.httpsCallable(
+                final callable =
+                    _functions.httpsCallable(
                   'confirmPlace',
                 );
 
-                final result = await callable.call<
-                    Map<String, dynamic>>(
+                final result =
+                    await callable.call<
+                        Map<String, dynamic>>(
                   {
                     'placeId': placeReference.id,
                   },
@@ -351,7 +499,8 @@ class _MapScreenState extends State<MapScreen> {
                   displayedConfirmations =
                       newConfirmations;
 
-                  displayedStatus = newStatus;
+                  displayedStatus =
+                      newStatus;
 
                   isConfirming = false;
                   hasAlreadyConfirmed = true;
@@ -481,12 +630,14 @@ class _MapScreenState extends State<MapScreen> {
               });
 
               try {
-                final callable = _functions.httpsCallable(
+                final callable =
+                    _functions.httpsCallable(
                   'reportPlace',
                 );
 
-                final result = await callable.call<
-                    Map<String, dynamic>>(
+                final result =
+                    await callable.call<
+                        Map<String, dynamic>>(
                   {
                     'placeId': placeReference.id,
                     'reason': report.reason,
@@ -671,9 +822,13 @@ class _MapScreenState extends State<MapScreen> {
                             FontWeight.bold,
                       ),
                     ),
+
                     const SizedBox(height: 8),
+
                     Text(address),
+
                     const SizedBox(height: 12),
+
                     Text(
                       statusLabel,
                       style: TextStyle(
@@ -690,6 +845,7 @@ class _MapScreenState extends State<MapScreen> {
                     if (displayedStatus ==
                         'disputed') ...[
                       const SizedBox(height: 6),
+
                       Container(
                         width: double.infinity,
                         padding:
@@ -712,8 +868,7 @@ class _MapScreenState extends State<MapScreen> {
                         ),
                         child: Row(
                           crossAxisAlignment:
-                              CrossAxisAlignment
-                                  .start,
+                              CrossAxisAlignment.start,
                           children: [
                             const Icon(
                               Icons
@@ -722,9 +877,7 @@ class _MapScreenState extends State<MapScreen> {
                                   Colors.orange,
                               size: 20,
                             ),
-                            const SizedBox(
-                              width: 8,
-                            ),
+                            const SizedBox(width: 8),
                             Expanded(
                               child: Text(
                                 _disputeReasonLabel(
@@ -767,6 +920,7 @@ class _MapScreenState extends State<MapScreen> {
 
                     if (modalMessage != null) ...[
                       const SizedBox(height: 16),
+
                       Container(
                         width: double.infinity,
                         padding:
@@ -800,7 +954,8 @@ class _MapScreenState extends State<MapScreen> {
                             Icon(
                               modalMessageIsError
                                   ? Icons.error_outline
-                                  : Icons.check_circle_outline,
+                                  : Icons
+                                      .check_circle_outline,
                               color: modalMessageIsError
                                   ? Colors.red
                                   : Colors.blue,
@@ -999,94 +1154,54 @@ class _MapScreenState extends State<MapScreen> {
         ),
       ),
 
-      body: StreamBuilder<
-          QuerySnapshot<
-              Map<String, dynamic>>>(
-        stream:
-            FirebaseFirestore
-                .instance
-                .collection(
-                  'places',
-                )
-                .where(
-                  'status',
-                  whereIn: [
-                    'pending',
-                    'confirmed',
-                    'disputed',
-                  ],
-                )
-                .snapshots(),
-        builder:
-            (context, snapshot) {
-          if (snapshot.hasError) {
-            return Center(
-              child: Text(
-                'Błąd: '
-                '${snapshot.error}',
-              ),
-            );
-          }
-
-          if (snapshot
-                  .connectionState ==
-              ConnectionState
-                  .waiting) {
-            return const Center(
-              child:
-                  CircularProgressIndicator(),
-            );
-          }
-
-          final places =
-              snapshot.data?.docs ??
-                  [];
-
-          final confirmedPlacesCount =
-              places.where(
-            (doc) {
-              final data = doc.data();
-
-              return data['status'] ==
-                  'confirmed';
-            },
-          ).length;
-
-          if (!_welcomePopupShown) {
-            WidgetsBinding.instance
-                .addPostFrameCallback(
-              (_) {
-                _showWelcomePopup(
-                  confirmedPlacesCount,
-                );
-              },
-            );
-          }
-
-          return FlutterMap(
+      body: Stack(
+        children: [
+          FlutterMap(
             mapController:
                 _mapController,
-            options:
-                const MapOptions(
+            options: MapOptions(
               initialCenter:
-                  LatLng(
+                  const LatLng(
                 54.5189,
                 18.5305,
               ),
               initialZoom: 13,
+
               interactionOptions:
-                  InteractionOptions(
+                  const InteractionOptions(
                 flags:
-                    InteractiveFlag
-                            .drag |
-                        InteractiveFlag
-                            .pinchZoom |
-                        InteractiveFlag
-                            .doubleTapZoom |
-                        InteractiveFlag
-                            .scrollWheelZoom,
+                    InteractiveFlag.drag |
+                    InteractiveFlag.pinchZoom |
+                    InteractiveFlag.doubleTapZoom |
+                    InteractiveFlag.scrollWheelZoom,
               ),
+
+              onMapReady: () {
+                _mapReady = true;
+
+                WidgetsBinding.instance
+                    .addPostFrameCallback(
+                  (_) {
+                    _loadInitialData();
+                  },
+                );
+              },
+
+              onPositionChanged:
+                  (camera, hasGesture) {
+                if (!hasGesture) {
+                  return;
+                }
+
+                if (!_showSearchAreaButton &&
+                    mounted) {
+                  setState(() {
+                    _showSearchAreaButton = true;
+                  });
+                }
+              },
             ),
+
             children: [
               TileLayer(
                 urlTemplate:
@@ -1098,7 +1213,7 @@ class _MapScreenState extends State<MapScreen> {
 
               MarkerLayer(
                 markers:
-                    places.map(
+                    _places.map(
                   (doc) {
                     final data =
                         doc.data();
@@ -1152,10 +1267,8 @@ class _MapScreenState extends State<MapScreen> {
 
                     return Marker(
                       point: LatLng(
-                        location
-                            .latitude,
-                        location
-                            .longitude,
+                        location.latitude,
+                        location.longitude,
                       ),
                       width: 50,
                       height: 50,
@@ -1172,8 +1285,7 @@ class _MapScreenState extends State<MapScreen> {
                           disputeReason,
                         ),
                         child: Icon(
-                          Icons
-                              .water_drop,
+                          Icons.water_drop,
                           size: 42,
                           color:
                               markerColor,
@@ -1195,8 +1307,62 @@ class _MapScreenState extends State<MapScreen> {
                 ],
               ),
             ],
-          );
-        },
+          ),
+
+          if (_showSearchAreaButton ||
+              _isLoadingPlaces)
+            Positioned(
+              top:
+                  MediaQuery.paddingOf(context)
+                          .top +
+                      kToolbarHeight +
+                      14,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: FilledButton.icon(
+                  style:
+                      FilledButton.styleFrom(
+                    backgroundColor:
+                        Colors.blue,
+                    foregroundColor:
+                        Colors.white,
+                    elevation: 4,
+                    padding:
+                        const EdgeInsets
+                            .symmetric(
+                      horizontal: 18,
+                      vertical: 12,
+                    ),
+                  ),
+                  onPressed:
+                      _isLoadingPlaces
+                          ? null
+                          : _loadPlacesForCurrentView,
+                  icon:
+                      _isLoadingPlaces
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child:
+                                  CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color:
+                                    Colors.white,
+                              ),
+                            )
+                          : const Icon(
+                              Icons.refresh,
+                            ),
+                  label: Text(
+                    _isLoadingPlaces
+                        ? 'Szukam...'
+                        : 'Szukaj w tym obszarze',
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
