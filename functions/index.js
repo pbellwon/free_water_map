@@ -6,6 +6,10 @@ const {
   Timestamp,
 } = require("firebase-admin/firestore");
 
+const {
+  geohashForLocation,
+} = require("geofire-common");
+
 initializeApp();
 
 const PLACE_LIMIT_24H = 2;
@@ -154,6 +158,11 @@ exports.createPlace = onCall(
     const cutoffMilliseconds =
       now.toMillis() - WINDOW_MS;
 
+    const geohash = geohashForLocation([
+      latitude,
+      longitude,
+    ]);
+
     let remaining = 0;
 
     await db.runTransaction(async (transaction) => {
@@ -204,10 +213,16 @@ exports.createPlace = onCall(
         {
           name,
           address,
+
           location: new GeoPoint(
             latitude,
             longitude,
           ),
+
+          lat: latitude,
+          lng: longitude,
+          geohash,
+
           category,
           confirmations: 1,
           status: "pending",
@@ -566,13 +581,6 @@ exports.reportPlace = onCall(
         },
       );
 
-      /*
-       * Pierwsze zgłoszenie kwestionuje lokal.
-       *
-       * Jeżeli lokal jest już disputed, nie zmieniamy
-       * pierwotnego disputeReason — nadal jednak zapisujemy
-       * indywidualne zgłoszenie użytkownika.
-       */
       if (currentStatus !== "disputed") {
         resultingStatus = "disputed";
         resultingDisputeReason = reason;
