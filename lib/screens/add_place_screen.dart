@@ -1,11 +1,8 @@
-import 'dart:convert';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 
 import '../models/nearby_place.dart';
@@ -39,12 +36,9 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
   bool _isSaving = false;
   bool _nameRecognizedFromMap = false;
 
-  String? _osmType;
-  int? _osmId;
-  String? _osmClass;
-  String? _osmPlaceType;
-
-  DateTime? _lastAddressRequest;
+  String? _provider;
+  String? _providerPlaceId;
+  double? _providerDistance;
 
   @override
   void initState() {
@@ -198,7 +192,7 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
                     CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    'W promieniu 150 metrów znaleźliśmy:',
+                    'W promieniu 75 metrów znaleźliśmy:',
                   ),
                   const SizedBox(height: 14),
                   ...nearbyPlaces.take(3).map(
@@ -217,9 +211,7 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
                               color: Colors.blue,
                               size: 22,
                             ),
-                            const SizedBox(
-                              width: 10,
-                            ),
+                            const SizedBox(width: 10),
                             Expanded(
                               child: Column(
                                 crossAxisAlignment:
@@ -233,15 +225,11 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
                                           FontWeight.w700,
                                     ),
                                   ),
-                                  const SizedBox(
-                                    height: 2,
-                                  ),
+                                  const SizedBox(height: 2),
                                   Text(
                                     place.address,
                                   ),
-                                  const SizedBox(
-                                    height: 2,
-                                  ),
+                                  const SizedBox(height: 2),
                                   Text(
                                     'Około '
                                     '${place.distanceMeters.round()} m '
@@ -309,222 +297,12 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
     return shouldAddAnyway ?? false;
   }
 
-  String _buildReadableAddress(
-    Map<String, dynamic> data,
-  ) {
-    final address =
-        data['address']
-            as Map<String, dynamic>?;
-
-    if (address == null) {
-      return (data['display_name']
-                  as String?)
-              ?.trim() ??
-          '';
-    }
-
-    final road =
-        (address['road'] ??
-                address['pedestrian'] ??
-                address['footway'] ??
-                address['path'] ??
-                address['square'])
-            ?.toString();
-
-    final houseNumber =
-        address['house_number']
-            ?.toString();
-
-    final postcode =
-        address['postcode']
-            ?.toString();
-
-    final city =
-        (address['city'] ??
-                address['town'] ??
-                address['village'] ??
-                address['municipality'])
-            ?.toString();
-
-    final streetParts = <String>[
-      if (road != null &&
-          road.isNotEmpty)
-        road,
-      if (houseNumber != null &&
-          houseNumber.isNotEmpty)
-        houseNumber,
-    ];
-
-    final cityParts = <String>[
-      if (postcode != null &&
-          postcode.isNotEmpty)
-        postcode,
-      if (city != null &&
-          city.isNotEmpty)
-        city,
-    ];
-
-    final readableParts = <String>[
-      if (streetParts.isNotEmpty)
-        streetParts.join(' '),
-      if (cityParts.isNotEmpty)
-        cityParts.join(' '),
-    ];
-
-    if (readableParts.isNotEmpty) {
-      return readableParts.join(', ');
-    }
-
-    return (data['display_name']
-                as String?)
-            ?.trim() ??
-        '';
-  }
-
-  String? _extractPlaceName(
-    Map<String, dynamic> data,
-  ) {
-    final osmCategory =
-        (data['category'] ?? data['class'])
-            ?.toString();
-
-    final osmPlaceType =
-        data['type']?.toString();
-
-    const gastronomicTypes = {
-      'restaurant',
-      'cafe',
-      'bar',
-      'pub',
-      'fast_food',
-      'food_court',
-      'ice_cream',
-    };
-
-    if (osmCategory != 'amenity' ||
-        !gastronomicTypes.contains(
-          osmPlaceType,
-        )) {
-      return null;
-    }
-
-    final directName =
-        data['name']?.toString().trim();
-
-    if (directName != null &&
-        directName.isNotEmpty) {
-      return directName;
-    }
-
-    final namedetails =
-        data['namedetails'];
-
-    if (namedetails is Map) {
-      final polishName =
-          namedetails['name:pl']
-              ?.toString()
-              .trim();
-
-      if (polishName != null &&
-          polishName.isNotEmpty) {
-        return polishName;
-      }
-
-      final defaultName =
-          namedetails['name']
-              ?.toString()
-              .trim();
-
-      if (defaultName != null &&
-          defaultName.isNotEmpty) {
-        return defaultName;
-      }
-    }
-
-    return null;
-  }
-
-  String? _categoryForOsmType(
-    String? osmPlaceType,
-  ) {
-    switch (osmPlaceType) {
-      case 'restaurant':
-      case 'fast_food':
-      case 'food_court':
-        return 'restaurant';
-
-      case 'cafe':
-      case 'ice_cream':
-        return 'cafe';
-
-      case 'bar':
-      case 'pub':
-        return 'bar';
-
-      default:
-        return null;
-    }
-  }
-
-  Future<Map<String, dynamic>?> _reverseNominatim({
-    required LatLng location,
-    required String layer,
-    required bool includeNameDetails,
-  }) async {
-    final uri = Uri.https(
-      'nominatim.openstreetmap.org',
-      '/reverse',
-      {
-        'format': 'jsonv2',
-        'lat':
-            location.latitude.toString(),
-        'lon':
-            location.longitude.toString(),
-        'addressdetails': '1',
-        'namedetails':
-            includeNameDetails ? '1' : '0',
-        'accept-language': 'pl',
-        'zoom': '18',
-        'layer': layer,
-      },
-    );
-
-    final response = await http.get(
-      uri,
-      headers: const {
-        'Accept': 'application/json',
-      },
-    );
-
-    if (response.statusCode != 200) {
-      throw Exception(
-        'Nominatim zwrócił kod '
-        '${response.statusCode}.',
-      );
-    }
-
-    final decoded =
-        jsonDecode(response.body);
-
-    if (decoded
-        is! Map<String, dynamic>) {
-      return null;
-    }
-
-    if (decoded['error'] != null) {
-      return null;
-    }
-
-    return decoded;
-  }
-
   Future<void> _resolvePlace() async {
     final location =
         _selectedLocation;
 
     if (location == null) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
             'Najpierw wskaż lokal na mapie.',
@@ -534,183 +312,120 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
       return;
     }
 
-    final now = DateTime.now();
-
-    if (_lastAddressRequest != null) {
-      final elapsed =
-          now.difference(
-        _lastAddressRequest!,
-      );
-
-      if (elapsed <
-          const Duration(seconds: 1)) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Odczekaj chwilę przed kolejnym '
-              'rozpoznaniem lokalu.',
-            ),
-          ),
-        );
-        return;
-      }
-    }
-
-    _lastAddressRequest = now;
-
     setState(() {
       _isResolvingPlace = true;
+
       _resolvedAddress = null;
       _nameRecognizedFromMap = false;
 
-      _osmType = null;
-      _osmId = null;
-      _osmClass = null;
-      _osmPlaceType = null;
+      _provider = null;
+      _providerPlaceId = null;
+      _providerDistance = null;
     });
 
     try {
-      final poiData =
-          await _reverseNominatim(
-        location: location,
-        layer: 'poi',
-        includeNameDetails: true,
+      final callable =
+          _functions.httpsCallable(
+        'recognizePlace',
       );
 
-      String? recognizedName;
-      String? recognizedCategory;
-
-      String? recognizedOsmType;
-      int? recognizedOsmId;
-      String? recognizedOsmClass;
-      String? recognizedOsmPlaceType;
-
-      if (poiData != null) {
-        final poiName =
-            _extractPlaceName(
-          poiData,
-        );
-
-        final poiLat =
-            double.tryParse(
-          poiData['lat']
-                  ?.toString() ??
-              '',
-        );
-
-        final poiLon =
-            double.tryParse(
-          poiData['lon']
-                  ?.toString() ??
-              '',
-        );
-
-        if (poiName != null &&
-            poiLat != null &&
-            poiLon != null) {
-          final poiLocation =
-              LatLng(
-            poiLat,
-            poiLon,
-          );
-
-          final distanceToPoi =
-              _distanceCalculator(
-            location,
-            poiLocation,
-          );
-
-          if (distanceToPoi <= 35) {
-            recognizedName =
-                poiName;
-
-            final poiType =
-                poiData['type']
-                    ?.toString();
-
-            recognizedCategory =
-                _categoryForOsmType(
-              poiType,
-            );
-
-            recognizedOsmType =
-                poiData['osm_type']
-                    ?.toString();
-
-            final rawOsmId =
-                poiData['osm_id'];
-
-            recognizedOsmId =
-                rawOsmId is num
-                    ? rawOsmId.toInt()
-                    : int.tryParse(
-                        rawOsmId
-                                ?.toString() ??
-                            '',
-                      );
-
-            recognizedOsmClass =
-                (poiData['category'] ??
-                        poiData['class'])
-                    ?.toString();
-
-            recognizedOsmPlaceType =
-                poiType;
-          }
-        }
-      }
-
-      await Future.delayed(
-        const Duration(
-          milliseconds: 1100,
-        ),
+      final result =
+          await callable.call<
+              Map<String, dynamic>>(
+        {
+          'latitude':
+              location.latitude,
+          'longitude':
+              location.longitude,
+        },
       );
-
-      final addressData =
-          await _reverseNominatim(
-        location: location,
-        layer: 'address',
-        includeNameDetails: false,
-      );
-
-      if (addressData == null) {
-        throw Exception(
-          'Nie znaleziono adresu dla '
-          'wybranego miejsca.',
-        );
-      }
-
-      final address =
-          _buildReadableAddress(
-        addressData,
-      );
-
-      if (address.isEmpty) {
-        throw Exception(
-          'Nie znaleziono adresu dla '
-          'wybranego miejsca.',
-        );
-      }
 
       if (!mounted) {
         return;
       }
 
+      final data = result.data;
+
+      final nameRaw =
+          data['name'];
+
+      final addressRaw =
+          data['address'];
+
+      final categoryRaw =
+          data['category'];
+
+      final providerRaw =
+          data['provider'];
+
+      final providerPlaceIdRaw =
+          data['providerPlaceId'];
+
+      final distanceRaw =
+          data['distance'];
+
+      final recognizedName =
+          nameRaw is String &&
+                  nameRaw.trim().isNotEmpty
+              ? nameRaw.trim()
+              : null;
+
+      final recognizedAddress =
+          addressRaw is String &&
+                  addressRaw.trim().isNotEmpty
+              ? addressRaw.trim()
+              : null;
+
+      if (recognizedAddress == null) {
+        throw Exception(
+          'Nie znaleziono adresu dla wybranego miejsca.',
+        );
+      }
+
+      String recognizedCategory =
+          'other';
+
+      if (categoryRaw is String &&
+          [
+            'restaurant',
+            'cafe',
+            'bar',
+            'other',
+          ].contains(categoryRaw)) {
+        recognizedCategory =
+            categoryRaw;
+      }
+
+      final recognizedProvider =
+          providerRaw is String
+              ? providerRaw
+              : null;
+
+      final recognizedProviderPlaceId =
+          providerPlaceIdRaw is String
+              ? providerPlaceIdRaw
+              : null;
+
+      final recognizedDistance =
+          distanceRaw is num
+              ? distanceRaw.toDouble()
+              : null;
+
       setState(() {
-        _resolvedAddress = address;
+        _resolvedAddress =
+            recognizedAddress;
 
-        _osmType =
-            recognizedOsmType;
+        _category =
+            recognizedCategory;
 
-        _osmId =
-            recognizedOsmId;
+        _provider =
+            recognizedProvider;
 
-        _osmClass =
-            recognizedOsmClass;
+        _providerPlaceId =
+            recognizedProviderPlaceId;
 
-        _osmPlaceType =
-            recognizedOsmPlaceType;
+        _providerDistance =
+            recognizedDistance;
 
         if (recognizedName != null) {
           _nameController.text =
@@ -720,22 +435,72 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
               true;
         }
 
-        if (recognizedCategory != null) {
-          _category =
-              recognizedCategory;
-        }
-
-        _isResolvingPlace = false;
+        _isResolvingPlace =
+            false;
       });
+    } on FirebaseFunctionsException catch (
+        error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _isResolvingPlace =
+            false;
+      });
+
+      String message;
+
+      switch (error.code) {
+        case 'invalid-argument':
+          message =
+              error.message ??
+                  'Nieprawidłowe współrzędne.';
+          break;
+
+        case 'unauthenticated':
+          message =
+              'Nie udało się rozpoznać użytkownika. '
+              'Odśwież aplikację i spróbuj ponownie.';
+          break;
+
+        case 'permission-denied':
+          message =
+              'Ta operacja nie jest obecnie dozwolona.';
+          break;
+
+        case 'failed-precondition':
+          message =
+              'Nie udało się zweryfikować aplikacji. '
+              'Odśwież stronę i spróbuj ponownie.';
+          break;
+
+        case 'internal':
+          message =
+              error.message ??
+                  'Nie udało się rozpoznać lokalu.';
+          break;
+
+        default:
+          message =
+              error.message ??
+                  'Nie udało się rozpoznać lokalu.';
+      }
+
+      ScaffoldMessenger.of(context)
+          .showSnackBar(
+        SnackBar(
+          content: Text(message),
+        ),
+      );
     } catch (error) {
       if (!mounted) {
         return;
       }
 
       setState(() {
-        _resolvedAddress = null;
-        _nameRecognizedFromMap = false;
-        _isResolvingPlace = false;
+        _isResolvingPlace =
+            false;
       });
 
       ScaffoldMessenger.of(context)
@@ -815,6 +580,7 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
         setState(() {
           _isSaving = false;
         });
+
         return;
       }
 
@@ -830,24 +596,23 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
             location.latitude,
         'longitude':
             location.longitude,
-        'category': _category,
+        'category':
+            _category,
       };
 
-      if (_osmType != null) {
-        data['osmType'] = _osmType;
+      if (_provider != null) {
+        data['provider'] =
+            _provider;
       }
 
-      if (_osmId != null) {
-        data['osmId'] = _osmId;
+      if (_providerPlaceId != null) {
+        data['providerPlaceId'] =
+            _providerPlaceId;
       }
 
-      if (_osmClass != null) {
-        data['osmClass'] = _osmClass;
-      }
-
-      if (_osmPlaceType != null) {
-        data['osmPlaceType'] =
-            _osmPlaceType;
+      if (_providerDistance != null) {
+        data['providerDistance'] =
+            _providerDistance;
       }
 
       final result =
@@ -1225,17 +990,13 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
                                       FontWeight.w700,
                                 ),
                               ),
-                              const SizedBox(
-                                height: 4,
-                              ),
+                              const SizedBox(height: 4),
                               Text(
                                 _resolvedAddress!,
                               ),
-                              const SizedBox(
-                                height: 4,
-                              ),
+                              const SizedBox(height: 4),
                               const Text(
-                                'Dane na podstawie OpenStreetMap.',
+                                'Dane lokalizacyjne: Geoapify / OpenStreetMap.',
                                 style: TextStyle(
                                   fontSize: 12,
                                   color:
@@ -1290,10 +1051,9 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
                     _nameRecognizedFromMap =
                         false;
 
-                    _osmType = null;
-                    _osmId = null;
-                    _osmClass = null;
-                    _osmPlaceType = null;
+                    _provider = null;
+                    _providerPlaceId = null;
+                    _providerDistance = null;
                   });
                 },
               ),
