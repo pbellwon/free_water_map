@@ -35,8 +35,14 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
 
   String _category = 'restaurant';
 
-  bool _isResolvingAddress = false;
+  bool _isResolvingPlace = false;
   bool _isSaving = false;
+  bool _nameRecognizedFromMap = false;
+
+  String? _osmType;
+  int? _osmId;
+  String? _osmClass;
+  String? _osmPlaceType;
 
   DateTime? _lastAddressRequest;
 
@@ -57,11 +63,19 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
 
   Future<void> _moveToUserLocation() async {
     try {
-      final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-        ),
-      );
+      var permission = await Geolocator.checkPermission();
+
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        return;
+      }
+
+      final position =
+          await Geolocator.getCurrentPosition();
 
       if (!mounted) {
         return;
@@ -74,10 +88,8 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
         ),
         16,
       );
-    } catch (error) {
-      debugPrint(
-        'Nie udało się pobrać lokalizacji: $error',
-      );
+    } catch (_) {
+      // Fallback pozostaje na Gdyni.
     }
   }
 
@@ -369,7 +381,144 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
         '';
   }
 
-  Future<void> _resolveAddress() async {
+  String? _extractPlaceName(
+    Map<String, dynamic> data,
+  ) {
+    final osmCategory =
+        (data['category'] ?? data['class'])
+            ?.toString();
+
+    final osmPlaceType =
+        data['type']?.toString();
+
+    const gastronomicTypes = {
+      'restaurant',
+      'cafe',
+      'bar',
+      'pub',
+      'fast_food',
+      'food_court',
+      'ice_cream',
+    };
+
+    if (osmCategory != 'amenity' ||
+        !gastronomicTypes.contains(
+          osmPlaceType,
+        )) {
+      return null;
+    }
+
+    final directName =
+        data['name']?.toString().trim();
+
+    if (directName != null &&
+        directName.isNotEmpty) {
+      return directName;
+    }
+
+    final namedetails =
+        data['namedetails'];
+
+    if (namedetails is Map) {
+      final polishName =
+          namedetails['name:pl']
+              ?.toString()
+              .trim();
+
+      if (polishName != null &&
+          polishName.isNotEmpty) {
+        return polishName;
+      }
+
+      final defaultName =
+          namedetails['name']
+              ?.toString()
+              .trim();
+
+      if (defaultName != null &&
+          defaultName.isNotEmpty) {
+        return defaultName;
+      }
+    }
+
+    return null;
+  }
+
+  String? _categoryForOsmType(
+    String? osmPlaceType,
+  ) {
+    switch (osmPlaceType) {
+      case 'restaurant':
+      case 'fast_food':
+      case 'food_court':
+        return 'restaurant';
+
+      case 'cafe':
+      case 'ice_cream':
+        return 'cafe';
+
+      case 'bar':
+      case 'pub':
+        return 'bar';
+
+      default:
+        return null;
+    }
+  }
+
+  Future<Map<String, dynamic>?> _reverseNominatim({
+    required LatLng location,
+    required String layer,
+    required bool includeNameDetails,
+  }) async {
+    final uri = Uri.https(
+      'nominatim.openstreetmap.org',
+      '/reverse',
+      {
+        'format': 'jsonv2',
+        'lat':
+            location.latitude.toString(),
+        'lon':
+            location.longitude.toString(),
+        'addressdetails': '1',
+        'namedetails':
+            includeNameDetails ? '1' : '0',
+        'accept-language': 'pl',
+        'zoom': '18',
+        'layer': layer,
+      },
+    );
+
+    final response = await http.get(
+      uri,
+      headers: const {
+        'Accept': 'application/json',
+      },
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception(
+        'Nominatim zwrócił kod '
+        '${response.statusCode}.',
+      );
+    }
+
+    final decoded =
+        jsonDecode(response.body);
+
+    if (decoded
+        is! Map<String, dynamic>) {
+      return null;
+    }
+
+    if (decoded['error'] != null) {
+      return null;
+    }
+
+    return decoded;
+  }
+
+  Future<void> _resolvePlace() async {
     final location =
         _selectedLocation;
 
@@ -388,7 +537,8 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
     final now = DateTime.now();
 
     if (_lastAddressRequest != null) {
-      final elapsed = now.difference(
+      final elapsed =
+          now.difference(
         _lastAddressRequest!,
       );
 
@@ -399,7 +549,7 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
           const SnackBar(
             content: Text(
               'Odczekaj chwilę przed kolejnym '
-              'sprawdzeniem adresu.',
+              'rozpoznaniem lokalu.',
             ),
           ),
         );
@@ -410,62 +560,136 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
     _lastAddressRequest = now;
 
     setState(() {
-      _isResolvingAddress = true;
+      _isResolvingPlace = true;
       _resolvedAddress = null;
+      _nameRecognizedFromMap = false;
+
+      _osmType = null;
+      _osmId = null;
+      _osmClass = null;
+      _osmPlaceType = null;
     });
 
-    final uri = Uri.https(
-      'nominatim.openstreetmap.org',
-      '/reverse',
-      {
-        'format': 'jsonv2',
-        'lat':
-            location.latitude.toString(),
-        'lon':
-            location.longitude.toString(),
-        'addressdetails': '1',
-        'accept-language': 'pl',
-        'zoom': '18',
-        'layer': 'address',
-      },
-    );
-
     try {
-      final response =
-          await http.get(uri);
+      final poiData =
+          await _reverseNominatim(
+        location: location,
+        layer: 'poi',
+        includeNameDetails: true,
+      );
 
-      if (response.statusCode != 200) {
-        throw Exception(
-          'Serwer zwrócił kod '
-          '${response.statusCode}.',
+      String? recognizedName;
+      String? recognizedCategory;
+
+      String? recognizedOsmType;
+      int? recognizedOsmId;
+      String? recognizedOsmClass;
+      String? recognizedOsmPlaceType;
+
+      if (poiData != null) {
+        final poiName =
+            _extractPlaceName(
+          poiData,
         );
+
+        final poiLat =
+            double.tryParse(
+          poiData['lat']
+                  ?.toString() ??
+              '',
+        );
+
+        final poiLon =
+            double.tryParse(
+          poiData['lon']
+                  ?.toString() ??
+              '',
+        );
+
+        if (poiName != null &&
+            poiLat != null &&
+            poiLon != null) {
+          final poiLocation =
+              LatLng(
+            poiLat,
+            poiLon,
+          );
+
+          final distanceToPoi =
+              _distanceCalculator(
+            location,
+            poiLocation,
+          );
+
+          if (distanceToPoi <= 35) {
+            recognizedName =
+                poiName;
+
+            final poiType =
+                poiData['type']
+                    ?.toString();
+
+            recognizedCategory =
+                _categoryForOsmType(
+              poiType,
+            );
+
+            recognizedOsmType =
+                poiData['osm_type']
+                    ?.toString();
+
+            final rawOsmId =
+                poiData['osm_id'];
+
+            recognizedOsmId =
+                rawOsmId is num
+                    ? rawOsmId.toInt()
+                    : int.tryParse(
+                        rawOsmId
+                                ?.toString() ??
+                            '',
+                      );
+
+            recognizedOsmClass =
+                (poiData['category'] ??
+                        poiData['class'])
+                    ?.toString();
+
+            recognizedOsmPlaceType =
+                poiType;
+          }
+        }
       }
 
-      final decoded =
-          jsonDecode(response.body);
+      await Future.delayed(
+        const Duration(
+          milliseconds: 1100,
+        ),
+      );
 
-      if (decoded
-          is! Map<String, dynamic>) {
-        throw const FormatException(
-          'Nieprawidłowa odpowiedź serwera.',
-        );
-      }
+      final addressData =
+          await _reverseNominatim(
+        location: location,
+        layer: 'address',
+        includeNameDetails: false,
+      );
 
-      if (decoded['error'] != null) {
+      if (addressData == null) {
         throw Exception(
-          decoded['error'].toString(),
+          'Nie znaleziono adresu dla '
+          'wybranego miejsca.',
         );
       }
 
       final address =
           _buildReadableAddress(
-        decoded,
+        addressData,
       );
 
       if (address.isEmpty) {
         throw Exception(
           'Nie znaleziono adresu dla '
-          'wybranego punktu.',
+          'wybranego miejsca.',
         );
       }
 
@@ -475,7 +699,33 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
 
       setState(() {
         _resolvedAddress = address;
-        _isResolvingAddress = false;
+
+        _osmType =
+            recognizedOsmType;
+
+        _osmId =
+            recognizedOsmId;
+
+        _osmClass =
+            recognizedOsmClass;
+
+        _osmPlaceType =
+            recognizedOsmPlaceType;
+
+        if (recognizedName != null) {
+          _nameController.text =
+              recognizedName;
+
+          _nameRecognizedFromMap =
+              true;
+        }
+
+        if (recognizedCategory != null) {
+          _category =
+              recognizedCategory;
+        }
+
+        _isResolvingPlace = false;
       });
     } catch (error) {
       if (!mounted) {
@@ -484,14 +734,15 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
 
       setState(() {
         _resolvedAddress = null;
-        _isResolvingAddress = false;
+        _nameRecognizedFromMap = false;
+        _isResolvingPlace = false;
       });
 
       ScaffoldMessenger.of(context)
           .showSnackBar(
         SnackBar(
           content: Text(
-            'Nie udało się pobrać adresu: '
+            'Nie udało się rozpoznać lokalu: '
             '$error',
           ),
         ),
@@ -539,7 +790,7 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
           .showSnackBar(
         const SnackBar(
           content: Text(
-            'Pobierz adres dla wybranej pinezki.',
+            'Najpierw rozpoznaj lokal z pinezki.',
           ),
         ),
       );
@@ -572,18 +823,37 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
         'createPlace',
       );
 
+      final data = <String, dynamic>{
+        'name': name,
+        'address': address,
+        'latitude':
+            location.latitude,
+        'longitude':
+            location.longitude,
+        'category': _category,
+      };
+
+      if (_osmType != null) {
+        data['osmType'] = _osmType;
+      }
+
+      if (_osmId != null) {
+        data['osmId'] = _osmId;
+      }
+
+      if (_osmClass != null) {
+        data['osmClass'] = _osmClass;
+      }
+
+      if (_osmPlaceType != null) {
+        data['osmPlaceType'] =
+            _osmPlaceType;
+      }
+
       final result =
           await callable.call<
               Map<String, dynamic>>(
-        {
-          'name': name,
-          'address': address,
-          'latitude':
-              location.latitude,
-          'longitude':
-              location.longitude,
-          'category': _category,
-        },
+        data,
       );
 
       if (!mounted) {
@@ -604,10 +874,10 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
           SnackBar(
             content: Text(
               remaining == 0
-                  ? 'Lokal dodany. Wykorzystałeś limit 3 lokali na najbliższe 24 godziny.'
-                  : 'Lokal dodany. Możesz dodać jeszcze $remaining '
-                      '${remaining == 1 ? 'lokal' : 'lokale'} '
-                      'w ciągu 24 godzin.',
+                  ? 'Lokal dodany. Wykorzystałeś limit '
+                      '2 lokali na najbliższe 24 godziny.'
+                  : 'Lokal dodany. Możesz dodać jeszcze '
+                      '$remaining lokal w ciągu 24 godzin.',
             ),
           ),
         );
@@ -629,7 +899,7 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
       switch (error.code) {
         case 'resource-exhausted':
           message =
-              'Osiągnąłeś limit 3 nowych lokali '
+              'Osiągnąłeś limit 2 nowych lokali '
               'w ciągu 24 godzin.';
           break;
 
@@ -719,19 +989,83 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
                       _nameController,
                   textInputAction:
                       TextInputAction.done,
+                  onChanged: (_) {
+                    if (_nameRecognizedFromMap) {
+                      setState(() {
+                        _nameRecognizedFromMap =
+                            false;
+                      });
+                    }
+                  },
                   decoration:
-                      const InputDecoration(
+                      InputDecoration(
                     labelText:
                         'Nazwa lokalu',
                     hintText:
-                        'Np. Bistro Zielony Talerz',
+                        'Najpierw spróbuj rozpoznać lokal',
                     border:
-                        OutlineInputBorder(),
+                        const OutlineInputBorder(),
+                    suffixIcon:
+                        _nameRecognizedFromMap
+                            ? const Icon(
+                                Icons
+                                    .verified_outlined,
+                                color:
+                                    Colors.blue,
+                              )
+                            : null,
                   ),
                 ),
-                const SizedBox(
-                  height: 12,
-                ),
+
+                if (_nameRecognizedFromMap) ...[
+                  const SizedBox(height: 6),
+                  const Align(
+                    alignment:
+                        Alignment.centerLeft,
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.check_circle,
+                          size: 16,
+                          color: Colors.blue,
+                        ),
+                        SizedBox(width: 6),
+                        Text(
+                          'Nazwa znaleziona na mapie',
+                          style: TextStyle(
+                            color: Colors.blue,
+                            fontSize: 12,
+                            fontWeight:
+                                FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+
+                if (hasResolvedAddress &&
+                    !_nameRecognizedFromMap &&
+                    _nameController.text
+                        .trim()
+                        .isEmpty) ...[
+                  const SizedBox(height: 6),
+                  const Align(
+                    alignment:
+                        Alignment.centerLeft,
+                    child: Text(
+                      'Nie znaleźliśmy nazwy lokalu na mapie. '
+                      'Wpisz ją ręcznie.',
+                      style: TextStyle(
+                        color: Colors.black54,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                ],
+
+                const SizedBox(height: 12),
+
                 DropdownButtonFormField<
                     String>(
                   initialValue:
@@ -779,18 +1113,16 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
                     });
                   },
                 ),
-                const SizedBox(
-                  height: 12,
-                ),
+
+                const SizedBox(height: 12),
+
                 Row(
                   crossAxisAlignment:
-                      CrossAxisAlignment
-                          .start,
+                      CrossAxisAlignment.start,
                   children: [
                     Icon(
                       hasSelectedLocation
-                          ? Icons
-                              .location_on
+                          ? Icons.location_on
                           : Icons
                               .location_on_outlined,
                       color:
@@ -798,36 +1130,32 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
                               ? Colors.blue
                               : Colors.grey,
                     ),
-                    const SizedBox(
-                      width: 8,
-                    ),
+                    const SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         hasSelectedLocation
                             ? 'Pinezka ustawiona. '
-                                'Pobierz adres tego punktu.'
+                                'Spróbuj rozpoznać lokal.'
                             : 'Kliknij dokładne miejsce '
                                 'lokalu na mapie.',
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(
-                  height: 12,
-                ),
+
+                const SizedBox(height: 12),
+
                 SizedBox(
-                  width:
-                      double.infinity,
+                  width: double.infinity,
                   child:
-                      OutlinedButton
-                          .icon(
+                      OutlinedButton.icon(
                     onPressed:
                         hasSelectedLocation &&
-                                !_isResolvingAddress
-                            ? _resolveAddress
+                                !_isResolvingPlace
+                            ? _resolvePlace
                             : null,
                     icon:
-                        _isResolvingAddress
+                        _isResolvingPlace
                             ? const SizedBox(
                                 width: 18,
                                 height: 18,
@@ -841,100 +1169,86 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
                                     .travel_explore,
                               ),
                     label: Text(
-                      _isResolvingAddress
-                          ? 'Pobieranie adresu...'
+                      _isResolvingPlace
+                          ? 'Rozpoznaję lokal...'
                           : hasResolvedAddress
-                              ? 'Pobierz adres ponownie'
-                              : 'Pobierz adres z pinezki',
+                              ? 'Rozpoznaj ponownie'
+                              : 'Rozpoznaj lokal',
                     ),
                   ),
                 ),
-                if (hasResolvedAddress)
-                  ...[
-                    const SizedBox(
-                      height: 12,
+
+                if (hasResolvedAddress) ...[
+                  const SizedBox(height: 12),
+
+                  Container(
+                    width: double.infinity,
+                    padding:
+                        const EdgeInsets.all(
+                      12,
                     ),
-                    Container(
-                      width:
-                          double.infinity,
-                      padding:
-                          const EdgeInsets
-                              .all(12),
-                      decoration:
-                          BoxDecoration(
-                        color: Colors.blue
-                            .withValues(
-                          alpha: 0.08,
-                        ),
-                        borderRadius:
-                            BorderRadius
-                                .circular(
-                          12,
-                        ),
-                        border:
-                            Border.all(
-                          color: Colors
-                              .blue
-                              .withValues(
-                            alpha: 0.25,
-                          ),
+                    decoration: BoxDecoration(
+                      color:
+                          Colors.blue.withValues(
+                        alpha: 0.08,
+                      ),
+                      borderRadius:
+                          BorderRadius.circular(
+                        12,
+                      ),
+                      border: Border.all(
+                        color:
+                            Colors.blue.withValues(
+                          alpha: 0.25,
                         ),
                       ),
-                      child: Row(
-                        crossAxisAlignment:
-                            CrossAxisAlignment
-                                .start,
-                        children: [
-                          const Icon(
-                            Icons
-                                .check_circle,
-                            color:
-                                Colors.blue,
-                          ),
-                          const SizedBox(
-                            width: 10,
-                          ),
-                          Expanded(
-                            child:
-                                Column(
-                              crossAxisAlignment:
-                                  CrossAxisAlignment
-                                      .start,
-                              children: [
-                                const Text(
-                                  'Wykryty adres',
-                                  style:
-                                      TextStyle(
-                                    fontWeight:
-                                        FontWeight
-                                            .w700,
-                                  ),
-                                ),
-                                const SizedBox(
-                                  height: 4,
-                                ),
-                                Text(
-                                  _resolvedAddress!,
-                                ),
-                                const SizedBox(
-                                  height: 4,
-                                ),
-                                const Text(
-                                  'Adres na podstawie danych OpenStreetMap.',
-                                  style:
-                                      TextStyle(
-                                    fontSize: 12,
-                                    color:
-                                        Colors.black54,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
                     ),
-                  ],
+                    child: Row(
+                      crossAxisAlignment:
+                          CrossAxisAlignment.start,
+                      children: [
+                        const Icon(
+                          Icons.check_circle,
+                          color: Colors.blue,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment:
+                                CrossAxisAlignment
+                                    .start,
+                            children: [
+                              const Text(
+                                'Wykryty adres',
+                                style: TextStyle(
+                                  fontWeight:
+                                      FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(
+                                height: 4,
+                              ),
+                              Text(
+                                _resolvedAddress!,
+                              ),
+                              const SizedBox(
+                                height: 4,
+                              ),
+                              const Text(
+                                'Dane na podstawie OpenStreetMap.',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color:
+                                      Colors.black54,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -954,9 +1268,12 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
                     const InteractionOptions(
                   flags:
                       InteractiveFlag.drag |
-                      InteractiveFlag.pinchZoom |
-                      InteractiveFlag.doubleTapZoom |
-                      InteractiveFlag.scrollWheelZoom,
+                      InteractiveFlag
+                          .pinchZoom |
+                      InteractiveFlag
+                          .doubleTapZoom |
+                      InteractiveFlag
+                          .scrollWheelZoom,
                 ),
                 onTap:
                     (tapPosition,
@@ -964,8 +1281,19 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
                   setState(() {
                     _selectedLocation =
                         point;
+
+                    _nameController.clear();
+
                     _resolvedAddress =
                         null;
+
+                    _nameRecognizedFromMap =
+                        false;
+
+                    _osmType = null;
+                    _osmId = null;
+                    _osmClass = null;
+                    _osmPlaceType = null;
                   });
                 },
               ),
@@ -977,6 +1305,7 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
                   userAgentPackageName:
                       'pl.freewater.app',
                 ),
+
                 if (_selectedLocation !=
                     null)
                   MarkerLayer(
@@ -988,8 +1317,7 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
                         height: 50,
                         child:
                             const Icon(
-                          Icons
-                              .water_drop,
+                          Icons.water_drop,
                           size: 42,
                           color:
                               Colors.blue,
@@ -997,6 +1325,7 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
                       ),
                     ],
                   ),
+
                 RichAttributionWidget(
                   attributions: [
                     TextSourceAttribution(
@@ -1012,29 +1341,26 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
             top: false,
             child: Padding(
               padding:
-                  const EdgeInsets
-                      .all(16),
+                  const EdgeInsets.all(
+                16,
+              ),
               child: SizedBox(
-                width:
-                    double.infinity,
+                width: double.infinity,
                 child: FilledButton(
                   style:
-                      FilledButton
-                          .styleFrom(
+                      FilledButton.styleFrom(
                     backgroundColor:
                         Colors.blue,
                     foregroundColor:
                         Colors.white,
                     disabledBackgroundColor:
-                        Colors.blue
-                            .withValues(
+                        Colors.blue.withValues(
                       alpha: 0.35,
                     ),
                     disabledForegroundColor:
                         Colors.white,
                     padding:
-                        const EdgeInsets
-                            .symmetric(
+                        const EdgeInsets.symmetric(
                       vertical: 16,
                     ),
                   ),
