@@ -19,7 +19,7 @@ class AddPlaceScreen extends StatefulWidget {
 }
 
 class _AddPlaceScreenState extends State<AddPlaceScreen> {
-  static const double _duplicateRadiusMeters = 150;
+  static const double _duplicateRadiusMeters = 75;
 
   final _nameController = TextEditingController();
   final Distance _distanceCalculator = const Distance();
