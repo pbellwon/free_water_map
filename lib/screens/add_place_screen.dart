@@ -57,19 +57,11 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
 
   Future<void> _moveToUserLocation() async {
     try {
-      var permission = await Geolocator.checkPermission();
-
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
-        return;
-      }
-
-      final position =
-          await Geolocator.getCurrentPosition();
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+        ),
+      );
 
       if (!mounted) {
         return;
@@ -82,8 +74,10 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
         ),
         16,
       );
-    } catch (_) {
-      // Fallback zostaje na Gdyni.
+    } catch (error) {
+      debugPrint(
+        'Nie udało się pobrać lokalizacji: $error',
+      );
     }
   }
 

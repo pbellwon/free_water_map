@@ -129,9 +129,7 @@ class _MapScreenState extends State<MapScreen> {
                     color: Colors.blue,
                     size: 48,
                   ),
-
                   const SizedBox(height: 16),
-
                   Text(
                     confirmedPlacesCount == 1
                         ? 'Jest już 1 potwierdzone miejsce, '
@@ -146,9 +144,7 @@ class _MapScreenState extends State<MapScreen> {
                       fontWeight: FontWeight.w700,
                     ),
                   ),
-
                   const SizedBox(height: 12),
-
                   const Text(
                     'Pomóż nam rozwijać mapę — '
                     'potwierdzaj lokale i dodawaj nowe miejsca.',
@@ -159,9 +155,7 @@ class _MapScreenState extends State<MapScreen> {
                       color: Colors.black54,
                     ),
                   ),
-
                   const SizedBox(height: 24),
-
                   SizedBox(
                     width: double.infinity,
                     child: FilledButton(
@@ -267,7 +261,6 @@ class _MapScreenState extends State<MapScreen> {
           ),
         ),
       );
-
       return;
     }
 
@@ -282,6 +275,9 @@ class _MapScreenState extends State<MapScreen> {
     var isConfirming = false;
     var isReporting = false;
 
+    String? modalMessage;
+    bool modalMessageIsError = false;
+
     await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
@@ -289,6 +285,16 @@ class _MapScreenState extends State<MapScreen> {
       builder: (bottomSheetContext) {
         return StatefulBuilder(
           builder: (modalContext, setModalState) {
+            void showModalMessage(
+              String message, {
+              required bool isError,
+            }) {
+              setModalState(() {
+                modalMessage = message;
+                modalMessageIsError = isError;
+              });
+            }
+
             Future<void> confirmPlace() async {
               if (isConfirming ||
                   hasAlreadyConfirmed ||
@@ -298,6 +304,7 @@ class _MapScreenState extends State<MapScreen> {
 
               setModalState(() {
                 isConfirming = true;
+                modalMessage = null;
               });
 
               try {
@@ -351,29 +358,23 @@ class _MapScreenState extends State<MapScreen> {
                 });
 
                 String message =
-                    'Dziękujemy za potwierdzenie.';
+                    'Dziękujemy. Potwierdzenie zostało zapisane.';
 
-                if (remaining != null) {
-                  if (remaining == 0) {
-                    message =
-                        'Potwierdzenie zapisane. '
-                        'Wykorzystałeś limit 2 potwierdzeń '
-                        'na najbliższe 24 godziny.';
-                  } else {
-                    message =
-                        'Potwierdzenie zapisane. '
-                        'Możesz potwierdzić jeszcze '
-                        '$remaining lokal '
-                        'w ciągu 24 godzin.';
-                  }
+                if (remaining == 0) {
+                  message =
+                      'Potwierdzenie zapisane. '
+                      'Wykorzystałeś limit 2 potwierdzeń '
+                      'na najbliższe 24 godziny.';
+                } else if (remaining != null) {
+                  message =
+                      'Potwierdzenie zapisane. '
+                      'Możesz potwierdzić jeszcze '
+                      '$remaining lokal w ciągu 24 godzin.';
                 }
 
-                ScaffoldMessenger.of(
-                  bottomSheetContext,
-                ).showSnackBar(
-                  SnackBar(
-                    content: Text(message),
-                  ),
+                showModalMessage(
+                  message,
+                  isError: false,
                 );
               } on FirebaseFunctionsException catch (error) {
                 if (!modalContext.mounted) {
@@ -432,12 +433,9 @@ class _MapScreenState extends State<MapScreen> {
                             'Nie udało się zapisać potwierdzenia.';
                 }
 
-                ScaffoldMessenger.of(
-                  bottomSheetContext,
-                ).showSnackBar(
-                  SnackBar(
-                    content: Text(message),
-                  ),
+                showModalMessage(
+                  message,
+                  isError: true,
                 );
               } catch (error) {
                 if (!modalContext.mounted) {
@@ -448,15 +446,9 @@ class _MapScreenState extends State<MapScreen> {
                   isConfirming = false;
                 });
 
-                ScaffoldMessenger.of(
-                  bottomSheetContext,
-                ).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      'Nie udało się zapisać potwierdzenia: '
-                      '$error',
-                    ),
-                  ),
+                showModalMessage(
+                  'Nie udało się zapisać potwierdzenia: $error',
+                  isError: true,
                 );
               }
             }
@@ -485,6 +477,7 @@ class _MapScreenState extends State<MapScreen> {
 
               setModalState(() {
                 isReporting = true;
+                modalMessage = null;
               });
 
               try {
@@ -550,12 +543,9 @@ class _MapScreenState extends State<MapScreen> {
                       'na najbliższe 24 godziny.';
                 }
 
-                ScaffoldMessenger.of(
-                  bottomSheetContext,
-                ).showSnackBar(
-                  SnackBar(
-                    content: Text(message),
-                  ),
+                showModalMessage(
+                  message,
+                  isError: false,
                 );
               } on FirebaseFunctionsException catch (error) {
                 if (!modalContext.mounted) {
@@ -620,12 +610,9 @@ class _MapScreenState extends State<MapScreen> {
                             'Nie udało się zapisać zgłoszenia.';
                 }
 
-                ScaffoldMessenger.of(
-                  bottomSheetContext,
-                ).showSnackBar(
-                  SnackBar(
-                    content: Text(message),
-                  ),
+                showModalMessage(
+                  message,
+                  isError: true,
                 );
               } catch (error) {
                 if (!modalContext.mounted) {
@@ -636,15 +623,9 @@ class _MapScreenState extends State<MapScreen> {
                   isReporting = false;
                 });
 
-                ScaffoldMessenger.of(
-                  bottomSheetContext,
-                ).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      'Nie udało się zapisać zgłoszenia: '
-                      '$error',
-                    ),
-                  ),
+                showModalMessage(
+                  'Nie udało się zapisać zgłoszenia: $error',
+                  isError: true,
                 );
               }
             }
@@ -669,7 +650,7 @@ class _MapScreenState extends State<MapScreen> {
 
             return SafeArea(
               top: false,
-              child: Padding(
+              child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(
                   24,
                   8,
@@ -690,17 +671,9 @@ class _MapScreenState extends State<MapScreen> {
                             FontWeight.bold,
                       ),
                     ),
-
-                    const SizedBox(
-                      height: 8,
-                    ),
-
+                    const SizedBox(height: 8),
                     Text(address),
-
-                    const SizedBox(
-                      height: 12,
-                    ),
-
+                    const SizedBox(height: 12),
                     Text(
                       statusLabel,
                       style: TextStyle(
@@ -716,34 +689,24 @@ class _MapScreenState extends State<MapScreen> {
 
                     if (displayedStatus ==
                         'disputed') ...[
-                      const SizedBox(
-                        height: 6,
-                      ),
+                      const SizedBox(height: 6),
                       Container(
-                        width:
-                            double.infinity,
+                        width: double.infinity,
                         padding:
-                            const EdgeInsets.all(
-                          12,
-                        ),
-                        decoration:
-                            BoxDecoration(
-                          color:
-                              Colors.orange
-                                  .withValues(
+                            const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.orange
+                              .withValues(
                             alpha: 0.10,
                           ),
                           borderRadius:
                               BorderRadius.circular(
                             10,
                           ),
-                          border:
-                              Border.all(
-                            color:
-                                Colors.orange
-                                    .withValues(
-                              alpha:
-                                  0.30,
+                          border: Border.all(
+                            color: Colors.orange
+                                .withValues(
+                              alpha: 0.30,
                             ),
                           ),
                         ),
@@ -774,9 +737,7 @@ class _MapScreenState extends State<MapScreen> {
                       ),
                     ],
 
-                    const SizedBox(
-                      height: 12,
-                    ),
+                    const SizedBox(height: 12),
 
                     const Row(
                       children: [
@@ -784,9 +745,7 @@ class _MapScreenState extends State<MapScreen> {
                           Icons.water_drop,
                           color: Colors.blue,
                         ),
-                        SizedBox(
-                          width: 8,
-                        ),
+                        SizedBox(width: 8),
                         Expanded(
                           child: Text(
                             'Darmowa woda do zamówienia',
@@ -799,27 +758,82 @@ class _MapScreenState extends State<MapScreen> {
                       ],
                     ),
 
-                    const SizedBox(
-                      height: 8,
-                    ),
+                    const SizedBox(height: 8),
 
                     Text(
                       'Potwierdzone: '
                       '$displayedConfirmations razy',
                     ),
 
-                    const SizedBox(
-                      height: 20,
-                    ),
+                    if (modalMessage != null) ...[
+                      const SizedBox(height: 16),
+                      Container(
+                        width: double.infinity,
+                        padding:
+                            const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: modalMessageIsError
+                              ? Colors.red.withValues(
+                                  alpha: 0.08,
+                                )
+                              : Colors.blue.withValues(
+                                  alpha: 0.08,
+                                ),
+                          borderRadius:
+                              BorderRadius.circular(
+                            10,
+                          ),
+                          border: Border.all(
+                            color: modalMessageIsError
+                                ? Colors.red.withValues(
+                                    alpha: 0.25,
+                                  )
+                                : Colors.blue.withValues(
+                                    alpha: 0.25,
+                                  ),
+                          ),
+                        ),
+                        child: Row(
+                          crossAxisAlignment:
+                              CrossAxisAlignment.start,
+                          children: [
+                            Icon(
+                              modalMessageIsError
+                                  ? Icons.error_outline
+                                  : Icons.check_circle_outline,
+                              color: modalMessageIsError
+                                  ? Colors.red
+                                  : Colors.blue,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                modalMessage!,
+                                style: TextStyle(
+                                  color:
+                                      modalMessageIsError
+                                          ? Colors.red
+                                              .shade700
+                                          : Colors.blue
+                                              .shade800,
+                                  fontWeight:
+                                      FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+
+                    const SizedBox(height: 20),
 
                     SizedBox(
-                      width:
-                          double.infinity,
-                      child:
-                          FilledButton(
+                      width: double.infinity,
+                      child: FilledButton(
                         style:
-                            FilledButton
-                                .styleFrom(
+                            FilledButton.styleFrom(
                           backgroundColor:
                               Colors.blue,
                           foregroundColor:
@@ -827,16 +841,14 @@ class _MapScreenState extends State<MapScreen> {
                           disabledBackgroundColor:
                               Colors.blue
                                   .withValues(
-                            alpha:
-                                0.45,
+                            alpha: 0.45,
                           ),
                           disabledForegroundColor:
                               Colors.white,
                           padding:
                               const EdgeInsets
                                   .symmetric(
-                            vertical:
-                                14,
+                            vertical: 14,
                           ),
                         ),
                         onPressed:
@@ -846,65 +858,52 @@ class _MapScreenState extends State<MapScreen> {
                                         'disputed'
                                 ? null
                                 : confirmPlace,
-                        child:
-                            isConfirming
-                                ? const SizedBox(
-                                    width:
-                                        22,
-                                    height:
-                                        22,
-                                    child:
-                                        CircularProgressIndicator(
-                                      strokeWidth:
-                                          2,
-                                      color:
-                                          Colors.white,
-                                    ),
-                                  )
-                                : Text(
-                                    displayedStatus ==
-                                            'disputed'
-                                        ? 'Potwierdzanie wstrzymane'
-                                        : hasAlreadyConfirmed
-                                            ? 'Już potwierdziłeś'
-                                            : 'Potwierdzam',
-                                  ),
+                        child: isConfirming
+                            ? const SizedBox(
+                                width: 22,
+                                height: 22,
+                                child:
+                                    CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : Text(
+                                displayedStatus ==
+                                        'disputed'
+                                    ? 'Potwierdzanie wstrzymane'
+                                    : hasAlreadyConfirmed
+                                        ? 'Już potwierdziłeś'
+                                        : 'Potwierdzam',
+                              ),
                       ),
                     ),
 
-                    const SizedBox(
-                      height: 10,
-                    ),
+                    const SizedBox(height: 10),
 
                     SizedBox(
-                      width:
-                          double.infinity,
+                      width: double.infinity,
                       child:
-                          OutlinedButton
-                              .icon(
+                          OutlinedButton.icon(
                         onPressed:
                             isReporting ||
                                     hasAlreadyReported
                                 ? null
                                 : reportProblem,
-                        icon:
-                            isReporting
-                                ? const SizedBox(
-                                    width:
-                                        18,
-                                    height:
-                                        18,
-                                    child:
-                                        CircularProgressIndicator(
-                                      strokeWidth:
-                                          2,
-                                    ),
-                                  )
-                                : Icon(
-                                    hasAlreadyReported
-                                        ? Icons.check_circle
-                                        : Icons.flag_outlined,
-                                  ),
+                        icon: isReporting
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child:
+                                    CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : Icon(
+                                hasAlreadyReported
+                                    ? Icons.check_circle
+                                    : Icons.flag_outlined,
+                              ),
                         label: Text(
                           hasAlreadyReported
                               ? 'Problem już zgłoszony'
