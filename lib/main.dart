@@ -28,6 +28,7 @@ Future<void> main() async {
 
   await FirebaseAppCheck.instance.activate(
     providerWeb: ReCaptchaEnterpriseProvider(
+      // WAŻNE:
       // ZOSTAW TUTAJ SWÓJ OBECNY PRAWDZIWY SITE KEY.
       '6LcV9XctAAAAAPq6-9vgUa0MilY_scUZZ-_OW2aA',
     ),
@@ -57,6 +58,7 @@ class _MapScreenState extends State<MapScreen> {
 
   Timer? _mapMoveDebounce;
 
+  bool _introPopupShown = false;
   bool _welcomePopupShown = false;
   bool _mapReady = false;
   bool _isLoadingPlaces = false;
@@ -133,8 +135,225 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   Future<void> _loadInitialData() async {
+    await _showIntroPopup();
+
+    if (!mounted) {
+      return;
+    }
+
     await _loadConfirmedPlacesCount();
     await _loadPlacesForCurrentView();
+  }
+
+  Future<void> _showIntroPopup() async {
+    if (!mounted || _introPopupShown) {
+      return;
+    }
+
+    _introPopupShown = true;
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) {
+        return Dialog(
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 24,
+            vertical: 24,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(22),
+          ),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(
+              maxWidth: 520,
+            ),
+            child: Stack(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    28,
+                    30,
+                    28,
+                    28,
+                  ),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.water_drop,
+                          color: Colors.blue,
+                          size: 52,
+                        ),
+
+                        const SizedBox(height: 12),
+
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 5,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.withValues(
+                              alpha: 0.10,
+                            ),
+                            borderRadius:
+                                BorderRadius.circular(20),
+                          ),
+                          child: const Text(
+                            'WERSJA BETA',
+                            style: TextStyle(
+                              color: Colors.blue,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.8,
+                            ),
+                          ),
+                        ),
+
+                        const SizedBox(height: 18),
+
+                        const Text(
+                          'DarmowaKranówka',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 25,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+
+                        const SizedBox(height: 18),
+
+                        const Text(
+                          'Pomysł, aby restauracje miały obowiązek '
+                          'podawania klientom darmowej wody z kranu, '
+                          'ostatecznie nie znalazł się w przepisach.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 15,
+                            height: 1.5,
+                          ),
+                        ),
+
+                        const SizedBox(height: 14),
+
+                        const Text(
+                          'My jednak wierzymy, że prawo nie musi być '
+                          'jedynym powodem, żeby robić coś dobrze.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 15,
+                            height: 1.5,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+
+                        const SizedBox(height: 14),
+
+                        const Text(
+                          'Woda nie powinna być luksusem. '
+                          'W rozwiniętym kraju dostęp do zwykłej '
+                          'kranówki przy posiłku powinien być czymś '
+                          'normalnym — i wiemy, że wiele restauracji, '
+                          'kawiarni i barów już dziś podaje ją swoim '
+                          'gościom bezpłatnie.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 15,
+                            height: 1.5,
+                          ),
+                        ),
+
+                        const SizedBox(height: 14),
+
+                        Text(
+                          'DarmowaKranówka powstała po to, '
+                          'żeby te miejsca odnaleźć i pokazać innym.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 15,
+                            height: 1.5,
+                            color: Colors.blue.shade800,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+
+                        const SizedBox(height: 14),
+
+                        const Text(
+                          'To projekt społecznościowy. Możesz dodawać '
+                          'lokale, w których dostałeś darmową kranówkę, '
+                          'potwierdzać istniejące miejsca i pomagać nam '
+                          'utrzymywać mapę aktualną.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 15,
+                            height: 1.5,
+                          ),
+                        ),
+
+                        const SizedBox(height: 14),
+
+                        const Text(
+                          'Im więcej osób dołączy, '
+                          'tym lepsza będzie mapa.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 15,
+                            height: 1.5,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+
+                        const SizedBox(height: 18),
+
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.withValues(
+                              alpha: 0.07,
+                            ),
+                            borderRadius:
+                                BorderRadius.circular(12),
+                          ),
+                          child: const Text(
+                            'To wciąż wersja Beta — aplikacja będzie '
+                            'się zmieniać i rozwijać razem z jej '
+                            'użytkownikami.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 13,
+                              height: 1.4,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: IconButton(
+                    tooltip: 'Zamknij',
+                    onPressed: () {
+                      Navigator.of(dialogContext).pop();
+                    },
+                    icon: const Icon(
+                      Icons.close,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _loadConfirmedPlacesCount() async {
