@@ -1581,10 +1581,6 @@ class _MapScreenState extends State<MapScreen> {
 
           onPositionChanged:
               (camera, hasGesture) {
-            if (!hasGesture) {
-              return;
-            }
-
             _schedulePlacesReload();
           },
         ),
