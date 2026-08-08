@@ -135,7 +135,8 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
             address:
                 data['address'] as String? ??
                     'Brak adresu',
-            distanceMeters: distanceMeters,
+            distanceMeters:
+                distanceMeters,
           ),
         );
       }
@@ -195,6 +196,7 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
                     'W promieniu 75 metrów znaleźliśmy:',
                   ),
                   const SizedBox(height: 14),
+
                   ...nearbyPlaces.take(3).map(
                     (place) {
                       return Padding(
@@ -249,6 +251,7 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
                       );
                     },
                   ),
+
                   const Text(
                     'Dodaj nowy wpis tylko wtedy, '
                     'gdy jest to inny lokal.',
@@ -344,7 +347,8 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
         return;
       }
 
-      final data = result.data;
+      final data =
+          result.data;
 
       final nameRaw =
           data['name'];
@@ -648,7 +652,10 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
         );
       }
 
-      Navigator.of(context).pop();
+      // WAŻNE:
+      // true informuje MapScreen,
+      // że faktycznie utworzono nowy lokal.
+      Navigator.of(context).pop(true);
     } on FirebaseFunctionsException catch (
         error) {
       if (!mounted) {
@@ -996,7 +1003,8 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
                               ),
                               const SizedBox(height: 4),
                               const Text(
-                                'Dane lokalizacyjne: Geoapify / OpenStreetMap.',
+                                'Dane lokalizacyjne: '
+                                'Geoapify / OpenStreetMap.',
                                 style: TextStyle(
                                   fontSize: 12,
                                   color:
@@ -1025,6 +1033,7 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
                   18.5305,
                 ),
                 initialZoom: 14,
+
                 interactionOptions:
                     const InteractionOptions(
                   flags:
@@ -1036,6 +1045,7 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
                       InteractiveFlag
                           .scrollWheelZoom,
                 ),
+
                 onTap:
                     (tapPosition,
                         point) {

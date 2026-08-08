@@ -29,7 +29,7 @@ Future<void> main() async {
   await FirebaseAppCheck.instance.activate(
     providerWeb: ReCaptchaEnterpriseProvider(
       // WAŻNE:
-      // ZOSTAW TUTAJ SWÓJ OBECNY PRAWDZIWY SITE KEY.
+      // Zostaw tutaj swój prawdziwy Enterprise Site Key.
       '6LcV9XctAAAAAPq6-9vgUa0MilY_scUZZ-_OW2aA',
     ),
   );
@@ -61,7 +61,12 @@ class _MapScreenState extends State<MapScreen> {
   bool _introPopupShown = false;
   bool _welcomePopupShown = false;
   bool _mapReady = false;
+
   bool _isLoadingPlaces = false;
+
+  // Jeżeli podczas trwającego query pojawi się nowe żądanie,
+  // zapamiętujemy je i wykonujemy zaraz po zakończeniu.
+  bool _reloadRequestedWhileLoading = false;
 
   @override
   void initState() {
@@ -142,6 +147,11 @@ class _MapScreenState extends State<MapScreen> {
     }
 
     await _loadConfirmedPlacesCount();
+
+    if (!mounted) {
+      return;
+    }
+
     await _loadPlacesForCurrentView();
   }
 
@@ -186,9 +196,7 @@ class _MapScreenState extends State<MapScreen> {
                           color: Colors.blue,
                           size: 52,
                         ),
-
                         const SizedBox(height: 12),
-
                         Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 10,
@@ -211,9 +219,7 @@ class _MapScreenState extends State<MapScreen> {
                             ),
                           ),
                         ),
-
                         const SizedBox(height: 18),
-
                         const Text(
                           'DarmowaKranówka',
                           textAlign: TextAlign.center,
@@ -222,9 +228,7 @@ class _MapScreenState extends State<MapScreen> {
                             fontWeight: FontWeight.w800,
                           ),
                         ),
-
                         const SizedBox(height: 18),
-
                         const Text(
                           'Pomysł, aby restauracje miały obowiązek '
                           'podawania klientom darmowej wody z kranu, '
@@ -235,9 +239,7 @@ class _MapScreenState extends State<MapScreen> {
                             height: 1.5,
                           ),
                         ),
-
                         const SizedBox(height: 14),
-
                         const Text(
                           'My jednak wierzymy, że prawo nie musi być '
                           'jedynym powodem, żeby robić coś dobrze.',
@@ -248,9 +250,7 @@ class _MapScreenState extends State<MapScreen> {
                             fontWeight: FontWeight.w600,
                           ),
                         ),
-
                         const SizedBox(height: 14),
-
                         const Text(
                           'Woda nie powinna być luksusem. '
                           'W rozwiniętym kraju dostęp do zwykłej '
@@ -264,9 +264,7 @@ class _MapScreenState extends State<MapScreen> {
                             height: 1.5,
                           ),
                         ),
-
                         const SizedBox(height: 14),
-
                         Text(
                           'DarmowaKranówka powstała po to, '
                           'żeby te miejsca odnaleźć i pokazać innym.',
@@ -278,9 +276,7 @@ class _MapScreenState extends State<MapScreen> {
                             fontWeight: FontWeight.w700,
                           ),
                         ),
-
                         const SizedBox(height: 14),
-
                         const Text(
                           'To projekt społecznościowy. Możesz dodawać '
                           'lokale, w których dostałeś darmową kranówkę, '
@@ -292,9 +288,7 @@ class _MapScreenState extends State<MapScreen> {
                             height: 1.5,
                           ),
                         ),
-
                         const SizedBox(height: 14),
-
                         const Text(
                           'Im więcej osób dołączy, '
                           'tym lepsza będzie mapa.',
@@ -305,9 +299,7 @@ class _MapScreenState extends State<MapScreen> {
                             fontWeight: FontWeight.w700,
                           ),
                         ),
-
                         const SizedBox(height: 18),
-
                         Container(
                           width: double.infinity,
                           padding: const EdgeInsets.all(14),
@@ -334,7 +326,6 @@ class _MapScreenState extends State<MapScreen> {
                     ),
                   ),
                 ),
-
                 Positioned(
                   top: 8,
                   right: 8,
@@ -384,32 +375,33 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   Future<void> _loadPlacesForCurrentView() async {
-    if (!_mapReady || _isLoadingPlaces) {
+    if (!_mapReady) {
       return;
     }
 
-    final bounds =
-        _mapController.camera.visibleBounds;
-
-    final south =
-        bounds.southWest.latitude;
-
-    final north =
-        bounds.northEast.latitude;
-
-    final west =
-        bounds.southWest.longitude;
-
-    final east =
-        bounds.northEast.longitude;
-
-    if (mounted) {
-      setState(() {
-        _isLoadingPlaces = true;
-      });
+    if (_isLoadingPlaces) {
+      _reloadRequestedWhileLoading = true;
+      return;
     }
 
+    _isLoadingPlaces = true;
+
     try {
+      final bounds =
+          _mapController.camera.visibleBounds;
+
+      final south =
+          bounds.southWest.latitude;
+
+      final north =
+          bounds.northEast.latitude;
+
+      final west =
+          bounds.southWest.longitude;
+
+      final east =
+          bounds.northEast.longitude;
+
       final snapshot =
           await FirebaseFirestore.instance
               .collection('places')
@@ -445,16 +437,11 @@ class _MapScreenState extends State<MapScreen> {
 
       setState(() {
         _places = snapshot.docs;
-        _isLoadingPlaces = false;
       });
     } on FirebaseException catch (error) {
       if (!mounted) {
         return;
       }
-
-      setState(() {
-        _isLoadingPlaces = false;
-      });
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -469,10 +456,6 @@ class _MapScreenState extends State<MapScreen> {
         return;
       }
 
-      setState(() {
-        _isLoadingPlaces = false;
-      });
-
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -480,6 +463,18 @@ class _MapScreenState extends State<MapScreen> {
           ),
         ),
       );
+    } finally {
+      _isLoadingPlaces = false;
+
+      if (_reloadRequestedWhileLoading) {
+        _reloadRequestedWhileLoading = false;
+
+        if (mounted) {
+          Future.microtask(
+            _loadPlacesForCurrentView,
+          );
+        }
+      }
     }
   }
 
@@ -1465,19 +1460,24 @@ class _MapScreenState extends State<MapScreen> {
     );
   }
 
-  void _openAddPlaceScreen() {
-    Navigator.of(context)
-        .push(
+  Future<void> _openAddPlaceScreen() async {
+    final placeAdded =
+        await Navigator.of(context).push<bool>(
       MaterialPageRoute(
         builder: (context) =>
             const AddPlaceScreen(),
       ),
-    )
-        .then((_) {
-      if (mounted) {
-        _loadPlacesForCurrentView();
-      }
-    });
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    if (placeAdded == true) {
+      // Jeżeli poprzedni refresh jeszcze trwa,
+      // metoda sama ustawi reload pending.
+      await _loadPlacesForCurrentView();
+    }
   }
 
   @override
@@ -1548,195 +1548,131 @@ class _MapScreenState extends State<MapScreen> {
         ),
       ),
 
-      body: Stack(
+      body: FlutterMap(
+        mapController:
+            _mapController,
+        options: MapOptions(
+          initialCenter:
+              const LatLng(
+            54.5189,
+            18.5305,
+          ),
+          initialZoom: 13,
+
+          interactionOptions:
+              const InteractionOptions(
+            flags:
+                InteractiveFlag.drag |
+                InteractiveFlag.pinchZoom |
+                InteractiveFlag.doubleTapZoom |
+                InteractiveFlag.scrollWheelZoom,
+          ),
+
+          onMapReady: () {
+            _mapReady = true;
+
+            WidgetsBinding.instance
+                .addPostFrameCallback(
+              (_) {
+                _loadInitialData();
+              },
+            );
+          },
+
+          onPositionChanged:
+              (camera, hasGesture) {
+            if (!hasGesture) {
+              return;
+            }
+
+            _schedulePlacesReload();
+          },
+        ),
+
         children: [
-          FlutterMap(
-            mapController:
-                _mapController,
-            options: MapOptions(
-              initialCenter:
-                  const LatLng(
-                54.5189,
-                18.5305,
+          TileLayer(
+            urlTemplate:
+                'https://tile.openstreetmap.org/'
+                '{z}/{x}/{y}.png',
+            userAgentPackageName:
+                'pl.freewater.app',
+          ),
+
+          MarkerClusterLayerWidget(
+            options:
+                MarkerClusterLayerOptions(
+              markers: markers,
+              maxClusterRadius: 50,
+              size:
+                  const Size(
+                58,
+                58,
               ),
-              initialZoom: 13,
-
-              interactionOptions:
-                  const InteractionOptions(
-                flags:
-                    InteractiveFlag.drag |
-                    InteractiveFlag
-                        .pinchZoom |
-                    InteractiveFlag
-                        .doubleTapZoom |
-                    InteractiveFlag
-                        .scrollWheelZoom,
+              alignment:
+                  Alignment.center,
+              padding:
+                  const EdgeInsets.all(
+                50,
               ),
-
-              onMapReady: () {
-                _mapReady = true;
-
-                WidgetsBinding.instance
-                    .addPostFrameCallback(
-                  (_) {
-                    _loadInitialData();
-                  },
-                );
-              },
-
-              onPositionChanged:
-                  (camera, hasGesture) {
-                if (!hasGesture) {
-                  return;
-                }
-
-                _schedulePlacesReload();
-              },
-            ),
-
-            children: [
-              TileLayer(
-                urlTemplate:
-                    'https://tile.openstreetmap.org/'
-                    '{z}/{x}/{y}.png',
-                userAgentPackageName:
-                    'pl.freewater.app',
-              ),
-
-              MarkerClusterLayerWidget(
-                options:
-                    MarkerClusterLayerOptions(
-                  markers: markers,
-
-                  maxClusterRadius: 50,
-
-                  size:
-                      const Size(
-                    58,
-                    58,
-                  ),
-
+              maxZoom: 17,
+              builder:
+                  (
+                context,
+                clusterMarkers,
+              ) {
+                return Stack(
                   alignment:
                       Alignment.center,
-
-                  padding:
-                      const EdgeInsets.all(
-                    50,
-                  ),
-
-                  maxZoom: 17,
-
-                  builder:
-                      (
-                    context,
-                    clusterMarkers,
-                  ) {
-                    return Stack(
-                      alignment:
-                          Alignment.center,
-                      children: [
-                        Icon(
-                          Icons.water_drop,
-                          size: 56,
+                  children: [
+                    Icon(
+                      Icons.water_drop,
+                      size: 56,
+                      color:
+                          Colors.blue.shade700,
+                      shadows: const [
+                        Shadow(
+                          blurRadius: 6,
+                          offset:
+                              Offset(
+                            0,
+                            2,
+                          ),
                           color:
-                              Colors.blue.shade700,
-                          shadows: const [
-                            Shadow(
-                              blurRadius: 6,
-                              offset:
-                                  Offset(
-                                0,
-                                2,
-                              ),
-                              color:
-                                  Colors.black26,
-                            ),
-                          ],
-                        ),
-                        Padding(
-                          padding:
-                              const EdgeInsets.only(
-                            bottom: 5,
-                          ),
-                          child: Text(
-                            clusterMarkers.length
-                                .toString(),
-                            style:
-                                const TextStyle(
-                              color:
-                                  Colors.white,
-                              fontWeight:
-                                  FontWeight.w800,
-                              fontSize: 14,
-                            ),
-                          ),
+                              Colors.black26,
                         ),
                       ],
-                    );
-                  },
-                ),
-              ),
+                    ),
+                    Padding(
+                      padding:
+                          const EdgeInsets.only(
+                        bottom: 5,
+                      ),
+                      child: Text(
+                        clusterMarkers.length
+                            .toString(),
+                        style:
+                            const TextStyle(
+                          color:
+                              Colors.white,
+                          fontWeight:
+                              FontWeight.w800,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
 
-              RichAttributionWidget(
-                attributions: [
-                  TextSourceAttribution(
-                    'OpenStreetMap contributors',
-                  ),
-                ],
+          RichAttributionWidget(
+            attributions: [
+              TextSourceAttribution(
+                'OpenStreetMap contributors',
               ),
             ],
           ),
-
-          if (_isLoadingPlaces)
-            Positioned(
-              top:
-                  MediaQuery.paddingOf(
-                        context,
-                      ).top +
-                      kToolbarHeight +
-                      12,
-              left: 0,
-              right: 0,
-              child: const Center(
-                child: Material(
-                  elevation: 3,
-                  borderRadius:
-                      BorderRadius.all(
-                    Radius.circular(20),
-                  ),
-                  child: Padding(
-                    padding:
-                        EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 8,
-                    ),
-                    child: Row(
-                      mainAxisSize:
-                          MainAxisSize.min,
-                      children: [
-                        SizedBox(
-                          width: 16,
-                          height: 16,
-                          child:
-                              CircularProgressIndicator(
-                            strokeWidth: 2,
-                          ),
-                        ),
-                        SizedBox(width: 8),
-                        Text(
-                          'Aktualizuję lokale...',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight:
-                                FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
         ],
       ),
     );
