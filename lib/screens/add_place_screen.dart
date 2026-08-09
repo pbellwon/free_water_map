@@ -11,8 +11,7 @@ class AddPlaceScreen extends StatefulWidget {
   const AddPlaceScreen({super.key});
 
   @override
-  State<AddPlaceScreen> createState() =>
-      _AddPlaceScreenState();
+  State<AddPlaceScreen> createState() => _AddPlaceScreenState();
 }
 
 class _AddPlaceScreenState extends State<AddPlaceScreen> {
@@ -22,8 +21,7 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
   final Distance _distanceCalculator = const Distance();
   final MapController _mapController = MapController();
 
-  final FirebaseFunctions _functions =
-      FirebaseFunctions.instanceFor(
+  final FirebaseFunctions _functions = FirebaseFunctions.instanceFor(
     region: 'europe-central2',
   );
 
@@ -34,6 +32,8 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
 
   bool _isResolvingPlace = false;
   bool _isSaving = false;
+
+  bool _placeWasResolved = false;
   bool _nameRecognizedFromMap = false;
 
   String? _provider;
@@ -68,8 +68,7 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
         return;
       }
 
-      final position =
-          await Geolocator.getCurrentPosition();
+      final position = await Geolocator.getCurrentPosition();
 
       if (!mounted) {
         return;
@@ -85,6 +84,26 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
     } catch (_) {
       // Fallback pozostaje na Gdyni.
     }
+  }
+
+  void _selectLocation(LatLng point) {
+    setState(() {
+      _selectedLocation = point;
+
+      // Zmiana pinezki resetuje poprzednie rozpoznanie.
+      _placeWasResolved = false;
+
+      _nameController.clear();
+      _resolvedAddress = null;
+
+      _category = 'restaurant';
+
+      _nameRecognizedFromMap = false;
+
+      _provider = null;
+      _providerPlaceId = null;
+      _providerDistance = null;
+    });
   }
 
   Future<List<NearbyPlace>> _findNearbyPlaces(
@@ -107,8 +126,7 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
     for (final document in snapshot.docs) {
       final data = document.data();
 
-      final location =
-          data['location'] as GeoPoint?;
+      final location = data['location'] as GeoPoint?;
 
       if (location == null) {
         continue;
@@ -119,32 +137,24 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
         location.longitude,
       );
 
-      final distanceMeters =
-          _distanceCalculator(
+      final distanceMeters = _distanceCalculator(
         selectedLocation,
         placeLocation,
       );
 
-      if (distanceMeters <=
-          _duplicateRadiusMeters) {
+      if (distanceMeters <= _duplicateRadiusMeters) {
         nearbyPlaces.add(
           NearbyPlace(
-            name:
-                data['name'] as String? ??
-                    'Nieznany lokal',
-            address:
-                data['address'] as String? ??
-                    'Brak adresu',
-            distanceMeters:
-                distanceMeters,
+            name: data['name'] as String? ?? 'Nieznany lokal',
+            address: data['address'] as String? ?? 'Brak adresu',
+            distanceMeters: distanceMeters,
           ),
         );
       }
     }
 
     nearbyPlaces.sort(
-      (first, second) =>
-          first.distanceMeters.compareTo(
+      (first, second) => first.distanceMeters.compareTo(
         second.distanceMeters,
       ),
     );
@@ -155,8 +165,7 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
   Future<bool> _checkForDuplicates(
     LatLng selectedLocation,
   ) async {
-    final nearbyPlaces =
-        await _findNearbyPlaces(
+    final nearbyPlaces = await _findNearbyPlaces(
       selectedLocation,
     );
 
@@ -168,8 +177,7 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
       return false;
     }
 
-    final shouldAddAnyway =
-        await showDialog<bool>(
+    final shouldAddAnyway = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
@@ -187,10 +195,8 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
             ),
             child: SingleChildScrollView(
               child: Column(
-                mainAxisSize:
-                    MainAxisSize.min,
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
                     'W promieniu 75 metrów znaleźliśmy:',
@@ -200,13 +206,11 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
                   ...nearbyPlaces.take(3).map(
                     (place) {
                       return Padding(
-                        padding:
-                            const EdgeInsets.only(
+                        padding: const EdgeInsets.only(
                           bottom: 12,
                         ),
                         child: Row(
-                          crossAxisAlignment:
-                              CrossAxisAlignment.start,
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             const Icon(
                               Icons.water_drop,
@@ -214,6 +218,7 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
                               size: 22,
                             ),
                             const SizedBox(width: 10),
+
                             Expanded(
                               child: Column(
                                 crossAxisAlignment:
@@ -221,10 +226,8 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
                                 children: [
                                   Text(
                                     place.name,
-                                    style:
-                                        const TextStyle(
-                                      fontWeight:
-                                          FontWeight.w700,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
                                     ),
                                   ),
                                   const SizedBox(height: 2),
@@ -233,14 +236,11 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
                                   ),
                                   const SizedBox(height: 2),
                                   Text(
-                                    'Około '
-                                    '${place.distanceMeters.round()} m '
+                                    'Około ${place.distanceMeters.round()} m '
                                     'od wybranego miejsca',
-                                    style:
-                                        const TextStyle(
+                                    style: const TextStyle(
                                       fontSize: 12,
-                                      color:
-                                          Colors.black54,
+                                      color: Colors.black54,
                                     ),
                                   ),
                                 ],
@@ -253,11 +253,9 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
                   ),
 
                   const Text(
-                    'Dodaj nowy wpis tylko wtedy, '
-                    'gdy jest to inny lokal.',
+                    'Dodaj nowy wpis tylko wtedy, gdy jest to inny lokal.',
                     style: TextStyle(
-                      fontWeight:
-                          FontWeight.w600,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ],
@@ -267,26 +265,19 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
           actions: [
             TextButton(
               onPressed: () {
-                Navigator.of(
-                  dialogContext,
-                ).pop(false);
+                Navigator.of(dialogContext).pop(false);
               },
               child: const Text(
                 'Anuluj',
               ),
             ),
             FilledButton(
-              style:
-                  FilledButton.styleFrom(
-                backgroundColor:
-                    Colors.blue,
-                foregroundColor:
-                    Colors.white,
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.blue,
+                foregroundColor: Colors.white,
               ),
               onPressed: () {
-                Navigator.of(
-                  dialogContext,
-                ).pop(true);
+                Navigator.of(dialogContext).pop(true);
               },
               child: const Text(
                 'To inny lokal',
@@ -301,24 +292,20 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
   }
 
   Future<void> _resolvePlace() async {
-    final location =
-        _selectedLocation;
+    final location = _selectedLocation;
 
     if (location == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Najpierw wskaż lokal na mapie.',
-          ),
-        ),
-      );
       return;
     }
 
     setState(() {
       _isResolvingPlace = true;
 
+      _placeWasResolved = false;
+
+      _nameController.clear();
       _resolvedAddress = null;
+
       _nameRecognizedFromMap = false;
 
       _provider = null;
@@ -327,19 +314,14 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
     });
 
     try {
-      final callable =
-          _functions.httpsCallable(
+      final callable = _functions.httpsCallable(
         'recognizePlace',
       );
 
-      final result =
-          await callable.call<
-              Map<String, dynamic>>(
+      final result = await callable.call<Map<String, dynamic>>(
         {
-          'latitude':
-              location.latitude,
-          'longitude':
-              location.longitude,
+          'latitude': location.latitude,
+          'longitude': location.longitude,
         },
       );
 
@@ -347,36 +329,22 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
         return;
       }
 
-      final data =
-          result.data;
+      final data = result.data;
 
-      final nameRaw =
-          data['name'];
-
-      final addressRaw =
-          data['address'];
-
-      final categoryRaw =
-          data['category'];
-
-      final providerRaw =
-          data['provider'];
-
-      final providerPlaceIdRaw =
-          data['providerPlaceId'];
-
-      final distanceRaw =
-          data['distance'];
+      final nameRaw = data['name'];
+      final addressRaw = data['address'];
+      final categoryRaw = data['category'];
+      final providerRaw = data['provider'];
+      final providerPlaceIdRaw = data['providerPlaceId'];
+      final distanceRaw = data['distance'];
 
       final recognizedName =
-          nameRaw is String &&
-                  nameRaw.trim().isNotEmpty
+          nameRaw is String && nameRaw.trim().isNotEmpty
               ? nameRaw.trim()
               : null;
 
       final recognizedAddress =
-          addressRaw is String &&
-                  addressRaw.trim().isNotEmpty
+          addressRaw is String && addressRaw.trim().isNotEmpty
               ? addressRaw.trim()
               : null;
 
@@ -386,8 +354,7 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
         );
       }
 
-      String recognizedCategory =
-          'other';
+      String recognizedCategory = 'other';
 
       if (categoryRaw is String &&
           [
@@ -396,61 +363,42 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
             'bar',
             'other',
           ].contains(categoryRaw)) {
-        recognizedCategory =
-            categoryRaw;
+        recognizedCategory = categoryRaw;
       }
 
       final recognizedProvider =
-          providerRaw is String
-              ? providerRaw
-              : null;
+          providerRaw is String ? providerRaw : null;
 
       final recognizedProviderPlaceId =
-          providerPlaceIdRaw is String
-              ? providerPlaceIdRaw
-              : null;
+          providerPlaceIdRaw is String ? providerPlaceIdRaw : null;
 
       final recognizedDistance =
-          distanceRaw is num
-              ? distanceRaw.toDouble()
-              : null;
+          distanceRaw is num ? distanceRaw.toDouble() : null;
 
       setState(() {
-        _resolvedAddress =
-            recognizedAddress;
+        _resolvedAddress = recognizedAddress;
 
-        _category =
-            recognizedCategory;
+        _category = recognizedCategory;
 
-        _provider =
-            recognizedProvider;
-
-        _providerPlaceId =
-            recognizedProviderPlaceId;
-
-        _providerDistance =
-            recognizedDistance;
+        _provider = recognizedProvider;
+        _providerPlaceId = recognizedProviderPlaceId;
+        _providerDistance = recognizedDistance;
 
         if (recognizedName != null) {
-          _nameController.text =
-              recognizedName;
-
-          _nameRecognizedFromMap =
-              true;
+          _nameController.text = recognizedName;
+          _nameRecognizedFromMap = true;
         }
 
-        _isResolvingPlace =
-            false;
+        _placeWasResolved = true;
+        _isResolvingPlace = false;
       });
-    } on FirebaseFunctionsException catch (
-        error) {
+    } on FirebaseFunctionsException catch (error) {
       if (!mounted) {
         return;
       }
 
       setState(() {
-        _isResolvingPlace =
-            false;
+        _isResolvingPlace = false;
       });
 
       String message;
@@ -459,7 +407,7 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
         case 'invalid-argument':
           message =
               error.message ??
-                  'Nieprawidłowe współrzędne.';
+              'Nieprawidłowe współrzędne.';
           break;
 
         case 'unauthenticated':
@@ -482,17 +430,16 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
         case 'internal':
           message =
               error.message ??
-                  'Nie udało się rozpoznać lokalu.';
+              'Nie udało się rozpoznać lokalu.';
           break;
 
         default:
           message =
               error.message ??
-                  'Nie udało się rozpoznać lokalu.';
+              'Nie udało się rozpoznać lokalu.';
       }
 
-      ScaffoldMessenger.of(context)
-          .showSnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(message),
         ),
@@ -503,16 +450,13 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
       }
 
       setState(() {
-        _isResolvingPlace =
-            false;
+        _isResolvingPlace = false;
       });
 
-      ScaffoldMessenger.of(context)
-          .showSnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Nie udało się rozpoznać lokalu: '
-            '$error',
+            'Nie udało się rozpoznać lokalu: $error',
           ),
         ),
       );
@@ -520,18 +464,23 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
   }
 
   Future<void> _savePlace() async {
-    final name =
-        _nameController.text.trim();
+    final name = _nameController.text.trim();
+    final location = _selectedLocation;
+    final address = _resolvedAddress;
 
-    final location =
-        _selectedLocation;
-
-    final address =
-        _resolvedAddress;
+    if (!_placeWasResolved) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Najpierw wyszukaj lokal.',
+          ),
+        ),
+      );
+      return;
+    }
 
     if (name.isEmpty) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
             'Podaj nazwę lokalu.',
@@ -542,8 +491,7 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
     }
 
     if (location == null) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
             'Wskaż lokal na mapie.',
@@ -553,13 +501,11 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
       return;
     }
 
-    if (address == null ||
-        address.isEmpty) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(
+    if (address == null || address.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Najpierw rozpoznaj lokal z pinezki.',
+            'Nie udało się ustalić adresu lokalu.',
           ),
         ),
       );
@@ -571,8 +517,7 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
     });
 
     try {
-      final shouldContinue =
-          await _checkForDuplicates(
+      final shouldContinue = await _checkForDuplicates(
         location,
       );
 
@@ -588,40 +533,31 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
         return;
       }
 
-      final callable =
-          _functions.httpsCallable(
+      final callable = _functions.httpsCallable(
         'createPlace',
       );
 
       final data = <String, dynamic>{
         'name': name,
         'address': address,
-        'latitude':
-            location.latitude,
-        'longitude':
-            location.longitude,
-        'category':
-            _category,
+        'latitude': location.latitude,
+        'longitude': location.longitude,
+        'category': _category,
       };
 
       if (_provider != null) {
-        data['provider'] =
-            _provider;
+        data['provider'] = _provider;
       }
 
       if (_providerPlaceId != null) {
-        data['providerPlaceId'] =
-            _providerPlaceId;
+        data['providerPlaceId'] = _providerPlaceId;
       }
 
       if (_providerDistance != null) {
-        data['providerDistance'] =
-            _providerDistance;
+        data['providerDistance'] = _providerDistance;
       }
 
-      final result =
-          await callable.call<
-              Map<String, dynamic>>(
+      final result = await callable.call<Map<String, dynamic>>(
         data,
       );
 
@@ -629,17 +565,13 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
         return;
       }
 
-      final remainingRaw =
-          result.data['remaining'];
+      final remainingRaw = result.data['remaining'];
 
       final remaining =
-          remainingRaw is num
-              ? remainingRaw.toInt()
-              : null;
+          remainingRaw is num ? remainingRaw.toInt() : null;
 
       if (remaining != null) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
               remaining == 0
@@ -652,12 +584,8 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
         );
       }
 
-      // WAŻNE:
-      // true informuje MapScreen,
-      // że faktycznie utworzono nowy lokal.
       Navigator.of(context).pop(true);
-    } on FirebaseFunctionsException catch (
-        error) {
+    } on FirebaseFunctionsException catch (error) {
       if (!mounted) {
         return;
       }
@@ -695,17 +623,16 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
         case 'invalid-argument':
           message =
               error.message ??
-                  'Nieprawidłowe dane lokalu.';
+              'Nieprawidłowe dane lokalu.';
           break;
 
         default:
           message =
               error.message ??
-                  'Nie udało się dodać lokalu.';
+              'Nie udało się dodać lokalu.';
       }
 
-      ScaffoldMessenger.of(context)
-          .showSnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(message),
         ),
@@ -719,446 +646,608 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
         _isSaving = false;
       });
 
-      ScaffoldMessenger.of(context)
-          .showSnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Nie udało się dodać lokalu: '
-            '$error',
+            'Nie udało się dodać lokalu: $error',
           ),
         ),
       );
     }
   }
 
+  Widget _buildStepHeader({
+    required String number,
+    required String title,
+    required String subtitle,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 28,
+          height: 28,
+          alignment: Alignment.center,
+          decoration: const BoxDecoration(
+            color: Colors.blue,
+            shape: BoxShape.circle,
+          ),
+          child: Text(
+            number,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                subtitle,
+                style: const TextStyle(
+                  fontSize: 13,
+                  height: 1.35,
+                  color: Colors.black54,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final hasSelectedLocation =
-        _selectedLocation != null;
+    final hasSelectedLocation = _selectedLocation != null;
 
-    final hasResolvedAddress =
-        _resolvedAddress != null;
+    final canSearch =
+        hasSelectedLocation &&
+        !_isResolvingPlace &&
+        !_isSaving;
+
+    final formEnabled =
+        _placeWasResolved &&
+        !_isResolvingPlace &&
+        !_isSaving;
+
+    final canAdd =
+        formEnabled &&
+        _resolvedAddress != null &&
+        _nameController.text.trim().isNotEmpty;
 
     return Scaffold(
       appBar: AppBar(
-        title:
-            const Text('Dodaj lokal'),
+        title: const Text(
+          'Dodaj lokal',
+        ),
       ),
-      body: Column(
-        children: [
-          Padding(
-            padding:
-                const EdgeInsets.fromLTRB(
-              16,
-              16,
-              16,
-              10,
-            ),
-            child: Column(
-              children: [
-                TextField(
-                  controller:
-                      _nameController,
-                  textInputAction:
-                      TextInputAction.done,
-                  onChanged: (_) {
-                    if (_nameRecognizedFromMap) {
-                      setState(() {
-                        _nameRecognizedFromMap =
-                            false;
-                      });
-                    }
-                  },
-                  decoration:
-                      InputDecoration(
-                    labelText:
-                        'Nazwa lokalu',
-                    hintText:
-                        'Najpierw spróbuj rozpoznać lokal',
-                    border:
-                        const OutlineInputBorder(),
-                    suffixIcon:
-                        _nameRecognizedFromMap
-                            ? const Icon(
-                                Icons
-                                    .verified_outlined,
-                                color:
-                                    Colors.blue,
-                              )
-                            : null,
-                  ),
+      body: SafeArea(
+        top: false,
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  16,
+                  18,
+                  16,
+                  12,
                 ),
+                child: _buildStepHeader(
+                  number: '1',
+                  title: 'Wskaż lokal na mapie',
+                  subtitle:
+                      'Dotknij dokładnego miejsca restauracji, '
+                      'kawiarni lub baru.',
+                ),
+              ),
 
-                if (_nameRecognizedFromMap) ...[
-                  const SizedBox(height: 6),
-                  const Align(
-                    alignment:
-                        Alignment.centerLeft,
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.check_circle,
-                          size: 16,
-                          color: Colors.blue,
+              SizedBox(
+                height: 330,
+                child: Stack(
+                  children: [
+                    FlutterMap(
+                      mapController: _mapController,
+                      options: MapOptions(
+                        initialCenter: const LatLng(
+                          54.5189,
+                          18.5305,
                         ),
-                        SizedBox(width: 6),
-                        Text(
-                          'Nazwa znaleziona na mapie',
-                          style: TextStyle(
-                            color: Colors.blue,
-                            fontSize: 12,
-                            fontWeight:
-                                FontWeight.w600,
+                        initialZoom: 14,
+                        interactionOptions:
+                            const InteractionOptions(
+                          flags:
+                              InteractiveFlag.drag |
+                              InteractiveFlag.pinchZoom |
+                              InteractiveFlag.doubleTapZoom |
+                              InteractiveFlag.scrollWheelZoom,
+                        ),
+                        onTap: (
+                          tapPosition,
+                          point,
+                        ) {
+                          _selectLocation(point);
+                        },
+                      ),
+                      children: [
+                        TileLayer(
+                          urlTemplate:
+                              'https://tile.openstreetmap.org/'
+                              '{z}/{x}/{y}.png',
+                          userAgentPackageName:
+                              'pl.freewater.app',
+                        ),
+
+                        if (_selectedLocation != null)
+                          MarkerLayer(
+                            markers: [
+                              Marker(
+                                point: _selectedLocation!,
+                                width: 50,
+                                height: 50,
+                                child: Icon(
+                                  Icons.water_drop,
+                                  size: 42,
+                                  color: Colors.blue.shade700,
+                                ),
+                              ),
+                            ],
                           ),
+
+                        RichAttributionWidget(
+                          attributions: [
+                            TextSourceAttribution(
+                              'OpenStreetMap contributors',
+                            ),
+                          ],
                         ),
                       ],
                     ),
-                  ),
-                ],
 
-                if (hasResolvedAddress &&
-                    !_nameRecognizedFromMap &&
-                    _nameController.text
-                        .trim()
-                        .isEmpty) ...[
-                  const SizedBox(height: 6),
-                  const Align(
-                    alignment:
-                        Alignment.centerLeft,
-                    child: Text(
-                      'Nie znaleźliśmy nazwy lokalu na mapie. '
-                      'Wpisz ją ręcznie.',
-                      style: TextStyle(
-                        color: Colors.black54,
-                        fontSize: 12,
+                    if (!hasSelectedLocation)
+                      Positioned(
+                        left: 16,
+                        right: 16,
+                        top: 14,
+                        child: IgnorePointer(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 10,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(
+                                alpha: 0.92,
+                              ),
+                              borderRadius: BorderRadius.circular(
+                                12,
+                              ),
+                              boxShadow: const [
+                                BoxShadow(
+                                  blurRadius: 8,
+                                  color: Colors.black12,
+                                ),
+                              ],
+                            ),
+                            child: const Row(
+                              children: [
+                                Icon(
+                                  Icons.touch_app_outlined,
+                                  color: Colors.blue,
+                                  size: 20,
+                                ),
+                                SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'Dotknij mapy, aby ustawić pinezkę.',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
-                ],
 
-                const SizedBox(height: 12),
-
-                DropdownButtonFormField<
-                    String>(
-                  initialValue:
-                      _category,
-                  decoration:
-                      const InputDecoration(
-                    labelText:
-                        'Rodzaj lokalu',
-                    border:
-                        OutlineInputBorder(),
-                  ),
-                  items: const [
-                    DropdownMenuItem(
-                      value:
-                          'restaurant',
-                      child: Text(
-                        'Restauracja',
+                    if (hasSelectedLocation)
+                      Positioned(
+                        left: 16,
+                        right: 16,
+                        top: 14,
+                        child: IgnorePointer(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 10,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(
+                                alpha: 0.92,
+                              ),
+                              borderRadius: BorderRadius.circular(
+                                12,
+                              ),
+                              boxShadow: const [
+                                BoxShadow(
+                                  blurRadius: 8,
+                                  color: Colors.black12,
+                                ),
+                              ],
+                            ),
+                            child: const Row(
+                              children: [
+                                Icon(
+                                  Icons.check_circle,
+                                  color: Colors.blue,
+                                  size: 20,
+                                ),
+                                SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'Pinezka ustawiona. '
+                                    'Możesz teraz wyszukać lokal.',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
                       ),
-                    ),
-                    DropdownMenuItem(
-                      value: 'cafe',
-                      child: Text(
-                        'Kawiarnia',
-                      ),
-                    ),
-                    DropdownMenuItem(
-                      value: 'bar',
-                      child:
-                          Text('Bar'),
-                    ),
-                    DropdownMenuItem(
-                      value: 'other',
-                      child:
-                          Text('Inne'),
-                    ),
-                  ],
-                  onChanged: (value) {
-                    if (value == null) {
-                      return;
-                    }
-
-                    setState(() {
-                      _category =
-                          value;
-                    });
-                  },
-                ),
-
-                const SizedBox(height: 12),
-
-                Row(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.start,
-                  children: [
-                    Icon(
-                      hasSelectedLocation
-                          ? Icons.location_on
-                          : Icons
-                              .location_on_outlined,
-                      color:
-                          hasSelectedLocation
-                              ? Colors.blue
-                              : Colors.grey,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        hasSelectedLocation
-                            ? 'Pinezka ustawiona. '
-                                'Spróbuj rozpoznać lokal.'
-                            : 'Kliknij dokładne miejsce '
-                                'lokalu na mapie.',
-                      ),
-                    ),
                   ],
                 ),
+              ),
 
-                const SizedBox(height: 12),
-
-                SizedBox(
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  16,
+                  14,
+                  16,
+                  20,
+                ),
+                child: SizedBox(
                   width: double.infinity,
-                  child:
-                      OutlinedButton.icon(
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                      foregroundColor: Colors.white,
+                      disabledBackgroundColor:
+                          Colors.blue.withValues(
+                        alpha: 0.30,
+                      ),
+                      disabledForegroundColor:
+                          Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 15,
+                      ),
+                    ),
                     onPressed:
-                        hasSelectedLocation &&
-                                !_isResolvingPlace
+                        canSearch
                             ? _resolvePlace
                             : null,
                     icon:
                         _isResolvingPlace
                             ? const SizedBox(
-                                width: 18,
-                                height: 18,
+                                width: 20,
+                                height: 20,
                                 child:
                                     CircularProgressIndicator(
                                   strokeWidth: 2,
+                                  color: Colors.white,
                                 ),
                               )
                             : const Icon(
-                                Icons
-                                    .travel_explore,
+                                Icons.search,
                               ),
                     label: Text(
                       _isResolvingPlace
-                          ? 'Rozpoznaję lokal...'
-                          : hasResolvedAddress
-                              ? 'Rozpoznaj ponownie'
-                              : 'Rozpoznaj lokal',
+                          ? 'Wyszukuję lokal...'
+                          : _placeWasResolved
+                              ? 'Wyszukaj ponownie'
+                              : 'Wyszukaj lokal',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
                 ),
-
-                if (hasResolvedAddress) ...[
-                  const SizedBox(height: 12),
-
-                  Container(
-                    width: double.infinity,
-                    padding:
-                        const EdgeInsets.all(
-                      12,
-                    ),
-                    decoration: BoxDecoration(
-                      color:
-                          Colors.blue.withValues(
-                        alpha: 0.08,
-                      ),
-                      borderRadius:
-                          BorderRadius.circular(
-                        12,
-                      ),
-                      border: Border.all(
-                        color:
-                            Colors.blue.withValues(
-                          alpha: 0.25,
-                        ),
-                      ),
-                    ),
-                    child: Row(
-                      crossAxisAlignment:
-                          CrossAxisAlignment.start,
-                      children: [
-                        const Icon(
-                          Icons.check_circle,
-                          color: Colors.blue,
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment:
-                                CrossAxisAlignment
-                                    .start,
-                            children: [
-                              const Text(
-                                'Wykryty adres',
-                                style: TextStyle(
-                                  fontWeight:
-                                      FontWeight.w700,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                _resolvedAddress!,
-                              ),
-                              const SizedBox(height: 4),
-                              const Text(
-                                'Dane lokalizacyjne: '
-                                'Geoapify / OpenStreetMap.',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color:
-                                      Colors.black54,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-
-          Expanded(
-            child: FlutterMap(
-              mapController:
-                  _mapController,
-              options: MapOptions(
-                initialCenter:
-                    const LatLng(
-                  54.5189,
-                  18.5305,
-                ),
-                initialZoom: 14,
-
-                interactionOptions:
-                    const InteractionOptions(
-                  flags:
-                      InteractiveFlag.drag |
-                      InteractiveFlag
-                          .pinchZoom |
-                      InteractiveFlag
-                          .doubleTapZoom |
-                      InteractiveFlag
-                          .scrollWheelZoom,
-                ),
-
-                onTap:
-                    (tapPosition,
-                        point) {
-                  setState(() {
-                    _selectedLocation =
-                        point;
-
-                    _nameController.clear();
-
-                    _resolvedAddress =
-                        null;
-
-                    _nameRecognizedFromMap =
-                        false;
-
-                    _provider = null;
-                    _providerPlaceId = null;
-                    _providerDistance = null;
-                  });
-                },
               ),
-              children: [
-                TileLayer(
-                  urlTemplate:
-                      'https://tile.openstreetmap.org/'
-                      '{z}/{x}/{y}.png',
-                  userAgentPackageName:
-                      'pl.freewater.app',
-                ),
 
-                if (_selectedLocation !=
-                    null)
-                  MarkerLayer(
-                    markers: [
-                      Marker(
-                        point:
-                            _selectedLocation!,
-                        width: 50,
-                        height: 50,
-                        child:
-                            const Icon(
-                          Icons.water_drop,
-                          size: 42,
-                          color:
-                              Colors.blue,
+              const Divider(
+                height: 1,
+              ),
+
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  16,
+                  20,
+                  16,
+                  12,
+                ),
+                child: _buildStepHeader(
+                  number: '2',
+                  title: 'Sprawdź dane lokalu',
+                  subtitle:
+                      'Po wyszukaniu sprawdź nazwę, '
+                      'rodzaj lokalu i adres.',
+                ),
+              ),
+
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  16,
+                  6,
+                  16,
+                  16,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    TextField(
+                      controller: _nameController,
+                      enabled: formEnabled,
+                      textInputAction: TextInputAction.done,
+                      onChanged: (_) {
+                        if (_nameRecognizedFromMap) {
+                          setState(() {
+                            _nameRecognizedFromMap = false;
+                          });
+                        } else {
+                          setState(() {});
+                        }
+                      },
+                      decoration: InputDecoration(
+                        labelText: 'Nazwa lokalu',
+                        hintText:
+                            formEnabled
+                                ? 'Nazwa lokalu'
+                                : 'Najpierw wyszukaj lokal',
+                        border: const OutlineInputBorder(),
+                        filled: !formEnabled,
+                        fillColor:
+                            !formEnabled
+                                ? Colors.grey.shade100
+                                : null,
+                        suffixIcon:
+                            _nameRecognizedFromMap
+                                ? const Icon(
+                                    Icons.verified_outlined,
+                                    color: Colors.blue,
+                                  )
+                                : null,
+                      ),
+                    ),
+
+                    if (_placeWasResolved &&
+                        _nameRecognizedFromMap) ...[
+                      const SizedBox(height: 7),
+                      const Row(
+                        children: [
+                          Icon(
+                            Icons.check_circle,
+                            size: 16,
+                            color: Colors.blue,
+                          ),
+                          SizedBox(width: 6),
+                          Text(
+                            'Nazwa znaleziona na mapie',
+                            style: TextStyle(
+                              color: Colors.blue,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+
+                    if (_placeWasResolved &&
+                        !_nameRecognizedFromMap &&
+                        _nameController.text
+                            .trim()
+                            .isEmpty) ...[
+                      const SizedBox(height: 7),
+                      const Text(
+                        'Nie znaleźliśmy nazwy lokalu. '
+                        'Wpisz ją ręcznie.',
+                        style: TextStyle(
+                          color: Colors.black54,
+                          fontSize: 12,
                         ),
                       ),
                     ],
-                  ),
 
-                RichAttributionWidget(
-                  attributions: [
-                    TextSourceAttribution(
-                      'OpenStreetMap contributors',
+                    const SizedBox(height: 14),
+
+                    DropdownButtonFormField<String>(
+                      value: _category,
+                      decoration: InputDecoration(
+                        labelText: 'Rodzaj lokalu',
+                        border: const OutlineInputBorder(),
+                        filled: !formEnabled,
+                        fillColor:
+                            !formEnabled
+                                ? Colors.grey.shade100
+                                : null,
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'restaurant',
+                          child: Text(
+                            'Restauracja',
+                          ),
+                        ),
+                        DropdownMenuItem(
+                          value: 'cafe',
+                          child: Text(
+                            'Kawiarnia',
+                          ),
+                        ),
+                        DropdownMenuItem(
+                          value: 'bar',
+                          child: Text(
+                            'Bar',
+                          ),
+                        ),
+                        DropdownMenuItem(
+                          value: 'other',
+                          child: Text(
+                            'Inne',
+                          ),
+                        ),
+                      ],
+                      onChanged:
+                          formEnabled
+                              ? (value) {
+                                  if (value == null) {
+                                    return;
+                                  }
+
+                                  setState(() {
+                                    _category = value;
+                                  });
+                                }
+                              : null,
+                    ),
+
+                    const SizedBox(height: 14),
+
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(
+                        14,
+                      ),
+                      decoration: BoxDecoration(
+                        color:
+                            formEnabled
+                                ? Colors.blue.withValues(
+                                    alpha: 0.07,
+                                  )
+                                : Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(
+                          12,
+                        ),
+                        border: Border.all(
+                          color:
+                              formEnabled
+                                  ? Colors.blue.withValues(
+                                      alpha: 0.22,
+                                    )
+                                  : Colors.grey.shade300,
+                        ),
+                      ),
+                      child: Row(
+                        crossAxisAlignment:
+                            CrossAxisAlignment.start,
+                        children: [
+                          Icon(
+                            formEnabled
+                                ? Icons.location_on_outlined
+                                : Icons.lock_outline,
+                            color:
+                                formEnabled
+                                    ? Colors.blue
+                                    : Colors.grey,
+                          ),
+                          const SizedBox(width: 10),
+
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment:
+                                  CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Adres',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    color:
+                                        formEnabled
+                                            ? Colors.black87
+                                            : Colors.black45,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  _resolvedAddress ??
+                                      'Najpierw wyszukaj lokal',
+                                  style: TextStyle(
+                                    color:
+                                        formEnabled
+                                            ? Colors.black87
+                                            : Colors.black45,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 22),
+
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: Colors.blue,
+                          foregroundColor: Colors.white,
+                          disabledBackgroundColor:
+                              Colors.blue.withValues(
+                            alpha: 0.30,
+                          ),
+                          disabledForegroundColor:
+                              Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 16,
+                          ),
+                        ),
+                        onPressed:
+                            _isSaving || !canAdd
+                                ? null
+                                : _savePlace,
+                        child:
+                            _isSaving
+                                ? const SizedBox(
+                                    width: 22,
+                                    height: 22,
+                                    child:
+                                        CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Text(
+                                    'Dodaj lokal',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                      ),
                     ),
                   ],
                 ),
-              ],
-            ),
-          ),
-
-          SafeArea(
-            top: false,
-            child: Padding(
-              padding:
-                  const EdgeInsets.all(
-                16,
               ),
-              child: SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  style:
-                      FilledButton.styleFrom(
-                    backgroundColor:
-                        Colors.blue,
-                    foregroundColor:
-                        Colors.white,
-                    disabledBackgroundColor:
-                        Colors.blue.withValues(
-                      alpha: 0.35,
-                    ),
-                    disabledForegroundColor:
-                        Colors.white,
-                    padding:
-                        const EdgeInsets.symmetric(
-                      vertical: 16,
-                    ),
-                  ),
-                  onPressed:
-                      _isSaving ||
-                              !hasSelectedLocation ||
-                              !hasResolvedAddress
-                          ? null
-                          : _savePlace,
-                  child: _isSaving
-                      ? const SizedBox(
-                          width: 22,
-                          height: 22,
-                          child:
-                              CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color:
-                                Colors.white,
-                          ),
-                        )
-                      : const Text(
-                          'Dodaj lokal',
-                        ),
-                ),
-              ),
-            ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
