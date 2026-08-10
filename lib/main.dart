@@ -27,7 +27,7 @@ Future<void> main() async {
   );
 
   await FirebaseAppCheck.instance.activate(
-    webProvider: ReCaptchaEnterpriseProvider(
+    providerWeb: ReCaptchaEnterpriseProvider(
       // ============================================================
       // WAŻNE:
       // WSTAW TUTAJ SWÓJ OBECNY PRAWDZIWY RECAPTCHA ENTERPRISE KEY.
