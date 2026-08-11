@@ -30,8 +30,8 @@ Future<void> main() async {
     providerWeb: ReCaptchaEnterpriseProvider(
       // ============================================================
       // WAŻNE:
-      // WSTAW TUTAJ SWÓJ OBECNY PRAWDZIWY RECAPTCHA ENTERPRISE KEY.
-      // Nie zmieniaj go względem obecnego main.dart.
+      // WSTAW TUTAJ SWÓJ OBECNY PRAWDZIWY
+      // RECAPTCHA ENTERPRISE SITE KEY.
       // ============================================================
       '6LcV9XctAAAAAPq6-9vgUa0MilY_scUZZ-_OW2aA',
     ),
@@ -41,6 +41,51 @@ Future<void> main() async {
 
   runApp(const FreeWaterApp());
 }
+
+// ================================================================
+// CACHE VIEWPORTU
+// ================================================================
+
+class _ViewportCacheEntry {
+  final double south;
+  final double north;
+  final double west;
+  final double east;
+
+  final List<QueryDocumentSnapshot<Map<String, dynamic>>> places;
+
+  final DateTime createdAt;
+
+  const _ViewportCacheEntry({
+    required this.south,
+    required this.north,
+    required this.west,
+    required this.east,
+    required this.places,
+    required this.createdAt,
+  });
+
+  bool containsBounds({
+    required double requestedSouth,
+    required double requestedNorth,
+    required double requestedWest,
+    required double requestedEast,
+  }) {
+    return south <= requestedSouth &&
+        north >= requestedNorth &&
+        west <= requestedWest &&
+        east >= requestedEast;
+  }
+
+  bool get isExpired {
+    return DateTime.now().difference(createdAt) >
+        const Duration(minutes: 5);
+  }
+}
+
+// ================================================================
+// MAP SCREEN
+// ================================================================
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
@@ -59,7 +104,35 @@ class _MapScreenState extends State<MapScreen> {
 
   List<QueryDocumentSnapshot<Map<String, dynamic>>> _places = [];
 
-  Timer? _mapMoveDebounce;
+  // ----------------------------------------------------------------
+  // CACHE
+  // ----------------------------------------------------------------
+
+  final List<_ViewportCacheEntry> _viewportCache = [];
+
+  static const int _maxViewportCacheEntries = 8;
+
+  // ----------------------------------------------------------------
+  // QUERY CONTROL
+  // ----------------------------------------------------------------
+
+  bool _isLoadingPlaces = false;
+
+  bool _reloadRequestedWhileLoading = false;
+
+  // Każde nowe żądanie dostaje kolejny numer.
+  //
+  // Jeśli starsze query skończy się później niż nowsze żądanie,
+  // jego wynik zostanie zignorowany.
+  int _queryGeneration = 0;
+
+  // Scroll wheel na desktopie nie ma typowego MoveEnd,
+  // więc dla niego zostawiamy mały debounce.
+  Timer? _scrollWheelDebounce;
+
+  // ----------------------------------------------------------------
+  // STARTUP
+  // ----------------------------------------------------------------
 
   bool _introPopupShown = false;
   bool _welcomePopupShown = false;
@@ -67,20 +140,21 @@ class _MapScreenState extends State<MapScreen> {
   bool _mapReady = false;
   bool _startupStarted = false;
 
-  bool _isLoadingPlaces = false;
-  bool _reloadRequestedWhileLoading = false;
+  // ----------------------------------------------------------------
+  // LOCATION
+  // ----------------------------------------------------------------
 
   bool _isLocatingUser = false;
 
   @override
   void dispose() {
-    _mapMoveDebounce?.cancel();
+    _scrollWheelDebounce?.cancel();
     super.dispose();
   }
 
-  // ============================================================
+  // ================================================================
   // START APLIKACJI
-  // ============================================================
+  // ================================================================
 
   Future<void> _initializeMap() async {
     if (_startupStarted) {
@@ -89,39 +163,22 @@ class _MapScreenState extends State<MapScreen> {
 
     _startupStarted = true;
 
-    // ------------------------------------------------------------
-    // 1. NAJWAŻNIEJSZE:
-    // Najpierw pobieramy lokale dla aktualnego viewportu.
+    // Najpierw Firestore.
     //
-    // To działa NIEZALEŻNIE od lokalizacji użytkownika.
-    // Jeżeli użytkownik:
-    // - nie zgodzi się na lokalizację,
-    // - przeglądarka nie pokaże promptu,
-    // - geolokalizacja się wysypie,
-    //
-    // mapa nadal ma działać.
-    // ------------------------------------------------------------
-
+    // Mapa nie może być uzależniona od tego,
+    // czy geolokalizacja działa.
     await _loadPlacesForCurrentView();
 
     if (!mounted) {
       return;
     }
 
-    // ------------------------------------------------------------
-    // 2. Lokalizację próbujemy uzyskać osobno.
-    // Nie blokujemy nią startu aplikacji.
-    // ------------------------------------------------------------
-
+    // Lokalizacja działa równolegle.
     unawaited(
       _moveToUserLocation(
         showError: false,
       ),
     );
-
-    // ------------------------------------------------------------
-    // 3. Popup intro.
-    // ------------------------------------------------------------
 
     await _showIntroPopup();
 
@@ -129,25 +186,17 @@ class _MapScreenState extends State<MapScreen> {
       return;
     }
 
-    // ------------------------------------------------------------
-    // 4. Globalny licznik potwierdzonych miejsc.
-    // ------------------------------------------------------------
-
     await _loadConfirmedPlacesCount();
   }
 
-  // ============================================================
+  // ================================================================
   // GEOLOKALIZACJA
-  // ============================================================
+  // ================================================================
 
   Future<void> _moveToUserLocation({
     required bool showError,
   }) async {
-    if (_isLocatingUser) {
-      return;
-    }
-
-    if (!_mapReady) {
+    if (_isLocatingUser || !_mapReady) {
       return;
     }
 
@@ -181,9 +230,7 @@ class _MapScreenState extends State<MapScreen> {
       final position = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
-          timeLimit: Duration(
-            seconds: 12,
-          ),
+          timeLimit: Duration(seconds: 12),
         ),
       );
 
@@ -199,21 +246,18 @@ class _MapScreenState extends State<MapScreen> {
         14,
       );
 
-      // Dajemy flutter_map chwilę na zaktualizowanie visibleBounds.
+      // Po programowym move czekamy chwilę,
+      // aż visibleBounds zostaną zaktualizowane.
       await Future.delayed(
-        const Duration(
-          milliseconds: 250,
-        ),
+        const Duration(milliseconds: 250),
       );
 
       if (!mounted) {
         return;
       }
 
-      // Po przeniesieniu mapy do użytkownika pobieramy dane
-      // dla NOWEGO viewportu.
       await _loadPlacesForCurrentView();
-    } catch (error) {
+    } catch (_) {
       if (showError && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -233,38 +277,316 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
-  // ============================================================
-  // AUTO REFRESH MAPY
-  // ============================================================
+  // ================================================================
+  // MAP EVENTS
+  // ================================================================
 
-  void _schedulePlacesReload() {
-    _mapMoveDebounce?.cancel();
-
-    _mapMoveDebounce = Timer(
-      const Duration(
-        milliseconds: 700,
-      ),
-      () {
-        if (!mounted || !_mapReady) {
-          return;
-        }
-
-        _loadPlacesForCurrentView();
-      },
-    );
-  }
-
-  // ============================================================
-  // FIRESTORE — ŁADOWANIE LOKALI
-  // ============================================================
-
-  Future<void> _loadPlacesForCurrentView() async {
+  void _handleMapEvent(
+    MapEvent event,
+  ) {
     if (!_mapReady) {
       return;
     }
 
-    // Jeżeli query już trwa, nie wyrzucamy kolejnego żądania.
-    // Zapamiętujemy je.
+    // Programowe przesunięcia obsługujemy sami.
+    //
+    // Np. _moveToUserLocation po mapController.move()
+    // wykonuje własny refresh.
+    if (event.source == MapEventSource.mapController) {
+      return;
+    }
+
+    // --------------------------------------------------------------
+    // DESKTOP — SCROLL WHEEL
+    //
+    // Dla kółka myszy dostajemy serię eventów.
+    // Czekamy 300 ms od ostatniego.
+    // --------------------------------------------------------------
+
+    if (event.source == MapEventSource.scrollWheel) {
+      _scrollWheelDebounce?.cancel();
+
+      _scrollWheelDebounce = Timer(
+        const Duration(milliseconds: 300),
+        () {
+          if (!mounted || !_mapReady) {
+            return;
+          }
+
+          _loadPlacesForCurrentView();
+        },
+      );
+
+      return;
+    }
+
+    // --------------------------------------------------------------
+    // TOUCH / MOBILE
+    // --------------------------------------------------------------
+
+    final shouldReload =
+        event is MapEventMoveEnd ||
+        event is MapEventFlingAnimationEnd ||
+        event is MapEventDoubleTapZoomEnd ||
+        event.source == MapEventSource.multiFingerEnd;
+
+    if (!shouldReload) {
+      return;
+    }
+
+    _scrollWheelDebounce?.cancel();
+
+    _loadPlacesForCurrentView();
+  }
+
+  // ================================================================
+  // CACHE
+  // ================================================================
+
+  List<QueryDocumentSnapshot<Map<String, dynamic>>>?
+      _getPlacesFromViewportCache({
+    required double south,
+    required double north,
+    required double west,
+    required double east,
+  }) {
+    // Najpierw wyrzucamy stare wpisy.
+    _viewportCache.removeWhere(
+      (entry) => entry.isExpired,
+    );
+
+    for (final entry in _viewportCache.reversed) {
+      if (!entry.containsBounds(
+        requestedSouth: south,
+        requestedNorth: north,
+        requestedWest: west,
+        requestedEast: east,
+      )) {
+        continue;
+      }
+
+      // Cache może obejmować większy obszar niż obecny viewport.
+      //
+      // Dlatego dodatkowo filtrujemy dokumenty.
+      return entry.places.where(
+        (document) {
+          final data = document.data();
+
+          final lat = (data['lat'] as num?)?.toDouble();
+          final lng = (data['lng'] as num?)?.toDouble();
+
+          if (lat == null || lng == null) {
+            return false;
+          }
+
+          return lat >= south &&
+              lat <= north &&
+              lng >= west &&
+              lng <= east;
+        },
+      ).toList();
+    }
+
+    return null;
+  }
+
+  void _saveViewportToCache({
+    required double south,
+    required double north,
+    required double west,
+    required double east,
+    required List<
+            QueryDocumentSnapshot<Map<String, dynamic>>>
+        places,
+  }) {
+    _viewportCache.removeWhere(
+      (entry) => entry.isExpired,
+    );
+
+    _viewportCache.add(
+      _ViewportCacheEntry(
+        south: south,
+        north: north,
+        west: west,
+        east: east,
+        places: List.unmodifiable(
+          places,
+        ),
+        createdAt: DateTime.now(),
+      ),
+    );
+
+    while (_viewportCache.length >
+        _maxViewportCacheEntries) {
+      _viewportCache.removeAt(0);
+    }
+  }
+
+  // ================================================================
+  // FIRESTORE QUERY
+  // ================================================================
+
+  Query<Map<String, dynamic>> _buildPlacesQuery({
+    required double south,
+    required double north,
+    required double west,
+    required double east,
+  }) {
+    return FirebaseFirestore.instance
+        .collection('places')
+        .where(
+          'status',
+          whereIn: [
+            'pending',
+            'confirmed',
+            'disputed',
+          ],
+        )
+        .where(
+          'lat',
+          isGreaterThanOrEqualTo: south,
+        )
+        .where(
+          'lat',
+          isLessThanOrEqualTo: north,
+        )
+        .where(
+          'lng',
+          isGreaterThanOrEqualTo: west,
+        )
+        .where(
+          'lng',
+          isLessThanOrEqualTo: east,
+        );
+  }
+
+  Future<QuerySnapshot<Map<String, dynamic>>?>
+      _fetchPlacesWithRetry({
+    required double south,
+    required double north,
+    required double west,
+    required double east,
+    required int requestGeneration,
+  }) async {
+    const timeout = Duration(
+      seconds: 5,
+    );
+
+    // --------------------------------------------------------------
+    // PRÓBA 1
+    // --------------------------------------------------------------
+
+    try {
+      return await _buildPlacesQuery(
+        south: south,
+        north: north,
+        west: west,
+        east: east,
+      ).get().timeout(
+            timeout,
+          );
+    } on TimeoutException {
+      // Jeśli w czasie oczekiwania pojawiło się nowsze żądanie,
+      // nie ma sensu retryować starego viewportu.
+      if (requestGeneration != _queryGeneration) {
+        return null;
+      }
+    }
+
+    // --------------------------------------------------------------
+    // KRÓTKA PRZERWA
+    // --------------------------------------------------------------
+
+    await Future.delayed(
+      const Duration(milliseconds: 250),
+    );
+
+    if (requestGeneration != _queryGeneration) {
+      return null;
+    }
+
+    // --------------------------------------------------------------
+    // PRÓBA 2
+    // --------------------------------------------------------------
+
+    return _buildPlacesQuery(
+      south: south,
+      north: north,
+      west: west,
+      east: east,
+    ).get().timeout(
+          timeout,
+        );
+  }
+
+  // ================================================================
+  // GŁÓWNE ŁADOWANIE VIEWPORTU
+  // ================================================================
+
+  Future<void> _loadPlacesForCurrentView({
+    bool forceNetwork = false,
+  }) async {
+    if (!_mapReady) {
+      return;
+    }
+
+    // --------------------------------------------------------------
+    // KAŻDE ŻĄDANIE MA NOWĄ GENERACJĘ.
+    // --------------------------------------------------------------
+
+    final requestGeneration =
+        ++_queryGeneration;
+
+    final bounds =
+        _mapController.camera.visibleBounds;
+
+    final south =
+        bounds.southWest.latitude;
+
+    final north =
+        bounds.northEast.latitude;
+
+    final west =
+        bounds.southWest.longitude;
+
+    final east =
+        bounds.northEast.longitude;
+
+    // --------------------------------------------------------------
+    // 1. CACHE
+    //
+    // Jeśli mamy dane dla tego obszaru, pokazujemy je natychmiast.
+    //
+    // Potem i tak robimy network refresh.
+    // --------------------------------------------------------------
+
+    if (!forceNetwork) {
+      final cachedPlaces =
+          _getPlacesFromViewportCache(
+        south: south,
+        north: north,
+        west: west,
+        east: east,
+      );
+
+      if (cachedPlaces != null && mounted) {
+        setState(() {
+          _places = cachedPlaces;
+        });
+      }
+    }
+
+    // --------------------------------------------------------------
+    // 2. QUERY JUŻ TRWA
+    //
+    // Nie uruchamiamy drugiego równolegle.
+    //
+    // Najważniejsze:
+    // queryGeneration już zostało zwiększone.
+    //
+    // Dzięki temu wynik starego query zostanie zignorowany.
+    // --------------------------------------------------------------
+
     if (_isLoadingPlaces) {
       _reloadRequestedWhileLoading = true;
       return;
@@ -273,81 +595,123 @@ class _MapScreenState extends State<MapScreen> {
     _isLoadingPlaces = true;
 
     try {
-      final bounds = _mapController.camera.visibleBounds;
-
-      final south = bounds.southWest.latitude;
-      final north = bounds.northEast.latitude;
-
-      final west = bounds.southWest.longitude;
-      final east = bounds.northEast.longitude;
-
       final snapshot =
-          await FirebaseFirestore.instance
-              .collection('places')
-              .where(
-                'status',
-                whereIn: [
-                  'pending',
-                  'confirmed',
-                  'disputed',
-                ],
-              )
-              .where(
-                'lat',
-                isGreaterThanOrEqualTo: south,
-              )
-              .where(
-                'lat',
-                isLessThanOrEqualTo: north,
-              )
-              .where(
-                'lng',
-                isGreaterThanOrEqualTo: west,
-              )
-              .where(
-                'lng',
-                isLessThanOrEqualTo: east,
-              )
-              .get();
+          await _fetchPlacesWithRetry(
+        south: south,
+        north: north,
+        west: west,
+        east: east,
+        requestGeneration:
+            requestGeneration,
+      );
 
       if (!mounted) {
         return;
       }
 
+      // Query mogło zostać zakończone poprawnie,
+      // ale w międzyczasie użytkownik przesunął mapę.
+      //
+      // W takim przypadku NIE WOLNO nadpisać mapy
+      // starymi wynikami.
+      if (requestGeneration !=
+          _queryGeneration) {
+        return;
+      }
+
+      if (snapshot == null) {
+        return;
+      }
+
+      final documents =
+          snapshot.docs;
+
+      _saveViewportToCache(
+        south: south,
+        north: north,
+        west: west,
+        east: east,
+        places: documents,
+      );
+
       setState(() {
-        _places = snapshot.docs;
+        _places = documents;
       });
+    } on TimeoutException {
+      if (!mounted) {
+        return;
+      }
+
+      if (requestGeneration !=
+          _queryGeneration) {
+        return;
+      }
+
+      // Jeżeli mamy już markery/cache,
+      // NIE czyścimy mapy i nie straszymy użytkownika.
+      //
+      // Komunikat pokazujemy tylko, gdy mapa jest naprawdę pusta.
+      if (_places.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Pobieranie lokali trwa zbyt długo. '
+              'Spróbuj przesunąć mapę lub użyć odświeżenia.',
+            ),
+          ),
+        );
+      }
     } on FirebaseException catch (error) {
       if (!mounted) {
         return;
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Nie udało się pobrać lokali: '
-            '${error.message ?? error.code}',
+      if (requestGeneration !=
+          _queryGeneration) {
+        return;
+      }
+
+      // Zachowujemy dotychczasowe markery.
+      //
+      // Błąd pokazujemy tylko wtedy,
+      // gdy naprawdę nic nie mamy do pokazania.
+      if (_places.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Nie udało się pobrać lokali: '
+              '${error.message ?? error.code}',
+            ),
           ),
-        ),
-      );
+        );
+      }
     } catch (error) {
       if (!mounted) {
         return;
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Nie udało się pobrać lokali: $error',
+      if (requestGeneration !=
+          _queryGeneration) {
+        return;
+      }
+
+      if (_places.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Nie udało się pobrać lokali: $error',
+            ),
           ),
-        ),
-      );
+        );
+      }
     } finally {
       _isLoadingPlaces = false;
 
-      // Jeżeli podczas query mapa została przesunięta albo
-      // użytkownik dodał lokal, wykonujemy kolejne query
-      // dla najnowszego viewportu.
+      // ------------------------------------------------------------
+      // Jeśli podczas query pojawiło się nowe żądanie,
+      // wykonujemy teraz query dla NAJNOWSZEGO viewportu.
+      // ------------------------------------------------------------
+
       if (_reloadRequestedWhileLoading) {
         _reloadRequestedWhileLoading = false;
 
@@ -360,9 +724,9 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
-  // ============================================================
+  // ================================================================
   // INTRO POPUP
-  // ============================================================
+  // ================================================================
 
   Future<void> _showIntroPopup() async {
     if (!mounted || _introPopupShown) {
@@ -407,21 +771,21 @@ class _MapScreenState extends State<MapScreen> {
                           color: Colors.blue,
                           size: 52,
                         ),
-
-                        const SizedBox(
-                          height: 12,
-                        ),
+                        const SizedBox(height: 12),
 
                         Container(
-                          padding: const EdgeInsets.symmetric(
+                          padding:
+                              const EdgeInsets.symmetric(
                             horizontal: 10,
                             vertical: 5,
                           ),
                           decoration: BoxDecoration(
-                            color: Colors.blue.withValues(
+                            color:
+                                Colors.blue.withValues(
                               alpha: 0.10,
                             ),
-                            borderRadius: BorderRadius.circular(
+                            borderRadius:
+                                BorderRadius.circular(
                               20,
                             ),
                           ),
@@ -430,28 +794,26 @@ class _MapScreenState extends State<MapScreen> {
                             style: TextStyle(
                               color: Colors.blue,
                               fontSize: 12,
-                              fontWeight: FontWeight.w800,
+                              fontWeight:
+                                  FontWeight.w800,
                               letterSpacing: 0.8,
                             ),
                           ),
                         ),
 
-                        const SizedBox(
-                          height: 18,
-                        ),
+                        const SizedBox(height: 18),
 
                         const Text(
                           'DarmowaKranówka',
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             fontSize: 25,
-                            fontWeight: FontWeight.w800,
+                            fontWeight:
+                                FontWeight.w800,
                           ),
                         ),
 
-                        const SizedBox(
-                          height: 18,
-                        ),
+                        const SizedBox(height: 18),
 
                         const Text(
                           'Pomysł, aby restauracje miały obowiązek '
@@ -464,9 +826,7 @@ class _MapScreenState extends State<MapScreen> {
                           ),
                         ),
 
-                        const SizedBox(
-                          height: 14,
-                        ),
+                        const SizedBox(height: 14),
 
                         const Text(
                           'My jednak wierzymy, że prawo nie musi być '
@@ -475,13 +835,12 @@ class _MapScreenState extends State<MapScreen> {
                           style: TextStyle(
                             fontSize: 15,
                             height: 1.5,
-                            fontWeight: FontWeight.w600,
+                            fontWeight:
+                                FontWeight.w600,
                           ),
                         ),
 
-                        const SizedBox(
-                          height: 14,
-                        ),
+                        const SizedBox(height: 14),
 
                         const Text(
                           'Woda nie powinna być luksusem. '
@@ -497,9 +856,7 @@ class _MapScreenState extends State<MapScreen> {
                           ),
                         ),
 
-                        const SizedBox(
-                          height: 14,
-                        ),
+                        const SizedBox(height: 14),
 
                         Text(
                           'DarmowaKranówka powstała po to, '
@@ -508,14 +865,14 @@ class _MapScreenState extends State<MapScreen> {
                           style: TextStyle(
                             fontSize: 15,
                             height: 1.5,
-                            color: Colors.blue.shade800,
-                            fontWeight: FontWeight.w700,
+                            color:
+                                Colors.blue.shade800,
+                            fontWeight:
+                                FontWeight.w700,
                           ),
                         ),
 
-                        const SizedBox(
-                          height: 14,
-                        ),
+                        const SizedBox(height: 14),
 
                         const Text(
                           'To projekt społecznościowy. Możesz dodawać '
@@ -529,9 +886,7 @@ class _MapScreenState extends State<MapScreen> {
                           ),
                         ),
 
-                        const SizedBox(
-                          height: 14,
-                        ),
+                        const SizedBox(height: 14),
 
                         const Text(
                           'Im więcej osób dołączy, '
@@ -540,24 +895,26 @@ class _MapScreenState extends State<MapScreen> {
                           style: TextStyle(
                             fontSize: 15,
                             height: 1.5,
-                            fontWeight: FontWeight.w700,
+                            fontWeight:
+                                FontWeight.w700,
                           ),
                         ),
 
-                        const SizedBox(
-                          height: 18,
-                        ),
+                        const SizedBox(height: 18),
 
                         Container(
                           width: double.infinity,
-                          padding: const EdgeInsets.all(
+                          padding:
+                              const EdgeInsets.all(
                             14,
                           ),
                           decoration: BoxDecoration(
-                            color: Colors.blue.withValues(
+                            color:
+                                Colors.blue.withValues(
                               alpha: 0.07,
                             ),
-                            borderRadius: BorderRadius.circular(
+                            borderRadius:
+                                BorderRadius.circular(
                               12,
                             ),
                           ),
@@ -569,7 +926,8 @@ class _MapScreenState extends State<MapScreen> {
                             style: TextStyle(
                               fontSize: 13,
                               height: 1.4,
-                              fontWeight: FontWeight.w600,
+                              fontWeight:
+                                  FontWeight.w600,
                             ),
                           ),
                         ),
@@ -601,9 +959,9 @@ class _MapScreenState extends State<MapScreen> {
     );
   }
 
-  // ============================================================
-  // COUNT + WELCOME POPUP
-  // ============================================================
+  // ================================================================
+  // COUNT + WELCOME
+  // ================================================================
 
   Future<void> _loadConfirmedPlacesCount() async {
     try {
@@ -621,7 +979,8 @@ class _MapScreenState extends State<MapScreen> {
         return;
       }
 
-      final count = result.count ?? 0;
+      final count =
+          result.count ?? 0;
 
       await _showWelcomePopup(
         count,
@@ -652,7 +1011,8 @@ class _MapScreenState extends State<MapScreen> {
       builder: (dialogContext) {
         return Dialog(
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(
+            borderRadius:
+                BorderRadius.circular(
               20,
             ),
           ),
@@ -661,14 +1021,16 @@ class _MapScreenState extends State<MapScreen> {
               maxWidth: 420,
             ),
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(
+              padding:
+                  const EdgeInsets.fromLTRB(
                 28,
                 30,
                 28,
                 24,
               ),
               child: Column(
-                mainAxisSize: MainAxisSize.min,
+                mainAxisSize:
+                    MainAxisSize.min,
                 children: [
                   const Icon(
                     Icons.water_drop,
@@ -676,9 +1038,7 @@ class _MapScreenState extends State<MapScreen> {
                     size: 48,
                   ),
 
-                  const SizedBox(
-                    height: 16,
-                  ),
+                  const SizedBox(height: 16),
 
                   Text(
                     confirmedPlacesCount == 1
@@ -691,13 +1051,12 @@ class _MapScreenState extends State<MapScreen> {
                     style: const TextStyle(
                       fontSize: 22,
                       height: 1.3,
-                      fontWeight: FontWeight.w700,
+                      fontWeight:
+                          FontWeight.w700,
                     ),
                   ),
 
-                  const SizedBox(
-                    height: 12,
-                  ),
+                  const SizedBox(height: 12),
 
                   const Text(
                     'Pomóż nam rozwijać mapę — '
@@ -710,17 +1069,20 @@ class _MapScreenState extends State<MapScreen> {
                     ),
                   ),
 
-                  const SizedBox(
-                    height: 24,
-                  ),
+                  const SizedBox(height: 24),
 
                   SizedBox(
                     width: double.infinity,
                     child: FilledButton(
-                      style: FilledButton.styleFrom(
-                        backgroundColor: Colors.blue,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(
+                      style:
+                          FilledButton.styleFrom(
+                        backgroundColor:
+                            Colors.blue,
+                        foregroundColor:
+                            Colors.white,
+                        padding:
+                            const EdgeInsets
+                                .symmetric(
                           vertical: 14,
                         ),
                       ),
@@ -732,7 +1094,8 @@ class _MapScreenState extends State<MapScreen> {
                       child: const Text(
                         'Sprawdź na mapie',
                         style: TextStyle(
-                          fontWeight: FontWeight.w600,
+                          fontWeight:
+                              FontWeight.w600,
                         ),
                       ),
                     ),
@@ -746,9 +1109,9 @@ class _MapScreenState extends State<MapScreen> {
     );
   }
 
-  // ============================================================
+  // ================================================================
   // MARKERY
-  // ============================================================
+  // ================================================================
 
   int _markerPriority(
     String status,
@@ -777,12 +1140,14 @@ class _MapScreenState extends State<MapScreen> {
         second,
       ) {
         final firstStatus =
-            first.data()['status'] as String? ??
-            'pending';
+            first.data()['status']
+                    as String? ??
+                'pending';
 
         final secondStatus =
-            second.data()['status'] as String? ??
-            'pending';
+            second.data()['status']
+                    as String? ??
+                'pending';
 
         return _markerPriority(
           firstStatus,
@@ -794,18 +1159,20 @@ class _MapScreenState extends State<MapScreen> {
       },
     );
 
-    final markers = <Marker>[];
+    final markers =
+        <Marker>[];
 
     for (final doc in sortedPlaces) {
-      final data = doc.data();
+      final data =
+          doc.data();
 
       final name =
           data['name'] as String? ??
-          'Nieznany lokal';
+              'Nieznany lokal';
 
       final address =
           data['address'] as String? ??
-          'Brak adresu';
+              'Brak adresu';
 
       final location =
           data['location'] as GeoPoint?;
@@ -816,12 +1183,12 @@ class _MapScreenState extends State<MapScreen> {
 
       final confirmations =
           (data['confirmations'] as num?)
-              ?.toInt() ??
-          0;
+                  ?.toInt() ??
+              0;
 
       final status =
           data['status'] as String? ??
-          'pending';
+              'pending';
 
       final disputeReason =
           data['disputeReason'] as String?;
@@ -830,16 +1197,19 @@ class _MapScreenState extends State<MapScreen> {
 
       switch (status) {
         case 'disputed':
-          markerColor = Colors.orange;
+          markerColor =
+              Colors.orange;
           break;
 
         case 'confirmed':
-          markerColor = Colors.blue.shade700;
+          markerColor =
+              Colors.blue.shade700;
           break;
 
         case 'pending':
         default:
-          markerColor = Colors.blueGrey.shade300;
+          markerColor =
+              Colors.blueGrey.shade300;
       }
 
       markers.add(
@@ -873,9 +1243,9 @@ class _MapScreenState extends State<MapScreen> {
     return markers;
   }
 
-  // ============================================================
-  // DISPUTE LABEL
-  // ============================================================
+  // ================================================================
+  // DISPUTE
+  // ================================================================
 
   String _disputeReasonLabel(
     String? reason,
@@ -903,13 +1273,14 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
-  // ============================================================
-  // BOTTOM SHEET LOKALU
-  // ============================================================
+  // ================================================================
+  // PLACE BOTTOM SHEET
+  // ================================================================
 
   Future<void> _showPlace(
     BuildContext context,
-    DocumentReference<Map<String, dynamic>> placeReference,
+    DocumentReference<Map<String, dynamic>>
+        placeReference,
     String name,
     String address,
     int confirmations,
@@ -953,7 +1324,8 @@ class _MapScreenState extends State<MapScreen> {
     bool hasAlreadyReported;
 
     try {
-      final results = await Future.wait([
+      final results =
+          await Future.wait([
         confirmationReference.get(),
         reportReference.get(),
       ]);
@@ -1013,15 +1385,19 @@ class _MapScreenState extends State<MapScreen> {
               required bool isError,
             }) {
               setModalState(() {
-                modalMessage = message;
-                modalMessageIsError = isError;
+                modalMessage =
+                    message;
+
+                modalMessageIsError =
+                    isError;
               });
             }
 
             Future<void> confirmPlace() async {
               if (isConfirming ||
                   hasAlreadyConfirmed ||
-                  displayedStatus == 'disputed') {
+                  displayedStatus ==
+                      'disputed') {
                 return;
               }
 
@@ -1032,13 +1408,15 @@ class _MapScreenState extends State<MapScreen> {
 
               try {
                 final callable =
-                    _functions.httpsCallable(
+                    _functions
+                        .httpsCallable(
                   'confirmPlace',
                 );
 
                 final result =
                     await callable.call<
-                        Map<String, dynamic>>(
+                        Map<String,
+                            dynamic>>(
                   {
                     'placeId':
                         placeReference.id,
@@ -1063,7 +1441,8 @@ class _MapScreenState extends State<MapScreen> {
 
                 final newConfirmations =
                     confirmationsRaw is num
-                        ? confirmationsRaw.toInt()
+                        ? confirmationsRaw
+                            .toInt()
                         : displayedConfirmations +
                             1;
 
@@ -1074,7 +1453,8 @@ class _MapScreenState extends State<MapScreen> {
 
                 final remaining =
                     remainingRaw is num
-                        ? remainingRaw.toInt()
+                        ? remainingRaw
+                            .toInt()
                         : null;
 
                 setModalState(() {
@@ -1099,7 +1479,8 @@ class _MapScreenState extends State<MapScreen> {
                       'Potwierdzenie zapisane. '
                       'Wykorzystałeś limit 2 potwierdzeń '
                       'na najbliższe 24 godziny.';
-                } else if (remaining != null) {
+                } else if (remaining !=
+                    null) {
                   message =
                       'Potwierdzenie zapisane. '
                       'Możesz potwierdzić jeszcze '
@@ -1111,7 +1492,11 @@ class _MapScreenState extends State<MapScreen> {
                   isError: false,
                 );
 
-                _loadPlacesForCurrentView();
+                // Wymuszamy network refresh,
+                // żeby cache nie pokazał starego statusu.
+                _loadPlacesForCurrentView(
+                  forceNetwork: true,
+                );
               } on FirebaseFunctionsException catch (
                   error) {
                 if (!modalContext.mounted) {
@@ -1119,7 +1504,8 @@ class _MapScreenState extends State<MapScreen> {
                 }
 
                 setModalState(() {
-                  isConfirming = false;
+                  isConfirming =
+                      false;
                 });
 
                 String message;
@@ -1151,8 +1537,8 @@ class _MapScreenState extends State<MapScreen> {
                   case 'failed-precondition':
                     message =
                         error.message ??
-                        'Tego lokalu nie można obecnie '
-                            'potwierdzić.';
+                            'Tego lokalu nie można obecnie '
+                                'potwierdzić.';
                     break;
 
                   case 'unauthenticated':
@@ -1169,7 +1555,8 @@ class _MapScreenState extends State<MapScreen> {
                   default:
                     message =
                         error.message ??
-                        'Nie udało się zapisać potwierdzenia.';
+                            'Nie udało się zapisać '
+                                'potwierdzenia.';
                 }
 
                 showModalMessage(
@@ -1182,7 +1569,8 @@ class _MapScreenState extends State<MapScreen> {
                 }
 
                 setModalState(() {
-                  isConfirming = false;
+                  isConfirming =
+                      false;
                 });
 
                 showModalMessage(
@@ -1221,13 +1609,15 @@ class _MapScreenState extends State<MapScreen> {
 
               try {
                 final callable =
-                    _functions.httpsCallable(
+                    _functions
+                        .httpsCallable(
                   'reportPlace',
                 );
 
                 final result =
                     await callable.call<
-                        Map<String, dynamic>>(
+                        Map<String,
+                            dynamic>>(
                   {
                     'placeId':
                         placeReference.id,
@@ -1260,13 +1650,15 @@ class _MapScreenState extends State<MapScreen> {
                         : 'disputed';
 
                 final newDisputeReason =
-                    disputeReasonRaw is String
+                    disputeReasonRaw
+                            is String
                         ? disputeReasonRaw
                         : report.reason;
 
                 final remaining =
                     remainingRaw is num
-                        ? remainingRaw.toInt()
+                        ? remainingRaw
+                            .toInt()
                         : null;
 
                 setModalState(() {
@@ -1298,7 +1690,9 @@ class _MapScreenState extends State<MapScreen> {
                   isError: false,
                 );
 
-                _loadPlacesForCurrentView();
+                _loadPlacesForCurrentView(
+                  forceNetwork: true,
+                );
               } on FirebaseFunctionsException catch (
                   error) {
                 if (!modalContext.mounted) {
@@ -1306,7 +1700,8 @@ class _MapScreenState extends State<MapScreen> {
                 }
 
                 setModalState(() {
-                  isReporting = false;
+                  isReporting =
+                      false;
                 });
 
                 String message;
@@ -1338,8 +1733,8 @@ class _MapScreenState extends State<MapScreen> {
                   case 'failed-precondition':
                     message =
                         error.message ??
-                        'Tego lokalu nie można obecnie '
-                            'zgłosić.';
+                            'Tego lokalu nie można obecnie '
+                                'zgłosić.';
                     break;
 
                   case 'unauthenticated':
@@ -1356,13 +1751,13 @@ class _MapScreenState extends State<MapScreen> {
                   case 'invalid-argument':
                     message =
                         error.message ??
-                        'Nieprawidłowe dane zgłoszenia.';
+                            'Nieprawidłowe dane zgłoszenia.';
                     break;
 
                   default:
                     message =
                         error.message ??
-                        'Nie udało się zapisać zgłoszenia.';
+                            'Nie udało się zapisać zgłoszenia.';
                 }
 
                 showModalMessage(
@@ -1375,7 +1770,8 @@ class _MapScreenState extends State<MapScreen> {
                 }
 
                 setModalState(() {
-                  isReporting = false;
+                  isReporting =
+                      false;
                 });
 
                 showModalMessage(
@@ -1428,17 +1824,13 @@ class _MapScreenState extends State<MapScreen> {
                       ),
                     ),
 
-                    const SizedBox(
-                      height: 8,
-                    ),
+                    const SizedBox(height: 8),
 
                     Text(
                       address,
                     ),
 
-                    const SizedBox(
-                      height: 12,
-                    ),
+                    const SizedBox(height: 12),
 
                     Text(
                       statusLabel,
@@ -1455,19 +1847,15 @@ class _MapScreenState extends State<MapScreen> {
 
                     if (displayedStatus ==
                         'disputed') ...[
-                      const SizedBox(
-                        height: 6,
-                      ),
+                      const SizedBox(height: 6),
 
                       Container(
-                        width:
-                            double.infinity,
+                        width: double.infinity,
                         padding:
                             const EdgeInsets.all(
                           12,
                         ),
-                        decoration:
-                            BoxDecoration(
+                        decoration: BoxDecoration(
                           color:
                               Colors.orange
                                   .withValues(
@@ -1477,8 +1865,7 @@ class _MapScreenState extends State<MapScreen> {
                               BorderRadius.circular(
                             10,
                           ),
-                          border:
-                              Border.all(
+                          border: Border.all(
                             color:
                                 Colors.orange
                                     .withValues(
@@ -1515,9 +1902,7 @@ class _MapScreenState extends State<MapScreen> {
                       ),
                     ],
 
-                    const SizedBox(
-                      height: 12,
-                    ),
+                    const SizedBox(height: 12),
 
                     const Row(
                       children: [
@@ -1526,9 +1911,7 @@ class _MapScreenState extends State<MapScreen> {
                           color: Colors.blue,
                         ),
 
-                        SizedBox(
-                          width: 8,
-                        ),
+                        SizedBox(width: 8),
 
                         Expanded(
                           child: Text(
@@ -1542,9 +1925,7 @@ class _MapScreenState extends State<MapScreen> {
                       ],
                     ),
 
-                    const SizedBox(
-                      height: 8,
-                    ),
+                    const SizedBox(height: 8),
 
                     Text(
                       'Potwierdzone: '
@@ -1552,19 +1933,15 @@ class _MapScreenState extends State<MapScreen> {
                     ),
 
                     if (modalMessage != null) ...[
-                      const SizedBox(
-                        height: 16,
-                      ),
+                      const SizedBox(height: 16),
 
                       Container(
-                        width:
-                            double.infinity,
+                        width: double.infinity,
                         padding:
                             const EdgeInsets.all(
                           12,
                         ),
-                        decoration:
-                            BoxDecoration(
+                        decoration: BoxDecoration(
                           color:
                               modalMessageIsError
                                   ? Colors.red
@@ -1579,8 +1956,7 @@ class _MapScreenState extends State<MapScreen> {
                               BorderRadius.circular(
                             10,
                           ),
-                          border:
-                              Border.all(
+                          border: Border.all(
                             color:
                                 modalMessageIsError
                                     ? Colors.red
@@ -1618,8 +1994,7 @@ class _MapScreenState extends State<MapScreen> {
                             Expanded(
                               child: Text(
                                 modalMessage!,
-                                style:
-                                    TextStyle(
+                                style: TextStyle(
                                   color:
                                       modalMessageIsError
                                           ? Colors.red
@@ -1636,17 +2011,13 @@ class _MapScreenState extends State<MapScreen> {
                       ),
                     ],
 
-                    const SizedBox(
-                      height: 20,
-                    ),
+                    const SizedBox(height: 20),
 
                     SizedBox(
-                      width:
-                          double.infinity,
+                      width: double.infinity,
                       child: FilledButton(
                         style:
-                            FilledButton
-                                .styleFrom(
+                            FilledButton.styleFrom(
                           backgroundColor:
                               Colors.blue,
                           foregroundColor:
@@ -1671,37 +2042,32 @@ class _MapScreenState extends State<MapScreen> {
                                         'disputed'
                                 ? null
                                 : confirmPlace,
-                        child:
-                            isConfirming
-                                ? const SizedBox(
-                                    width: 22,
-                                    height: 22,
-                                    child:
-                                        CircularProgressIndicator(
-                                      strokeWidth:
-                                          2,
-                                      color:
-                                          Colors.white,
-                                    ),
-                                  )
-                                : Text(
-                                    displayedStatus ==
-                                            'disputed'
-                                        ? 'Potwierdzanie wstrzymane'
-                                        : hasAlreadyConfirmed
-                                            ? 'Już potwierdziłeś'
-                                            : 'Potwierdzam',
-                                  ),
+                        child: isConfirming
+                            ? const SizedBox(
+                                width: 22,
+                                height: 22,
+                                child:
+                                    CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color:
+                                      Colors.white,
+                                ),
+                              )
+                            : Text(
+                                displayedStatus ==
+                                        'disputed'
+                                    ? 'Potwierdzanie wstrzymane'
+                                    : hasAlreadyConfirmed
+                                        ? 'Już potwierdziłeś'
+                                        : 'Potwierdzam',
+                              ),
                       ),
                     ),
 
-                    const SizedBox(
-                      height: 10,
-                    ),
+                    const SizedBox(height: 10),
 
                     SizedBox(
-                      width:
-                          double.infinity,
+                      width: double.infinity,
                       child:
                           OutlinedButton.icon(
                         onPressed:
@@ -1709,24 +2075,22 @@ class _MapScreenState extends State<MapScreen> {
                                     hasAlreadyReported
                                 ? null
                                 : reportProblem,
-                        icon:
-                            isReporting
-                                ? const SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child:
-                                        CircularProgressIndicator(
-                                      strokeWidth:
-                                          2,
-                                    ),
-                                  )
-                                : Icon(
-                                    hasAlreadyReported
-                                        ? Icons
-                                            .check_circle
-                                        : Icons
-                                            .flag_outlined,
-                                  ),
+                        icon: isReporting
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child:
+                                    CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : Icon(
+                                hasAlreadyReported
+                                    ? Icons
+                                        .check_circle
+                                    : Icons
+                                        .flag_outlined,
+                              ),
                         label: Text(
                           hasAlreadyReported
                               ? 'Problem już zgłoszony'
@@ -1744,9 +2108,9 @@ class _MapScreenState extends State<MapScreen> {
     );
   }
 
-  // ============================================================
+  // ================================================================
   // ADD PLACE
-  // ============================================================
+  // ================================================================
 
   Future<void> _openAddPlaceScreen() async {
     final placeAdded =
@@ -1762,13 +2126,17 @@ class _MapScreenState extends State<MapScreen> {
     }
 
     if (placeAdded == true) {
-      await _loadPlacesForCurrentView();
+      // Nowy lokal musi przyjść z sieci,
+      // nie z pięciominutowego cache.
+      await _loadPlacesForCurrentView(
+        forceNetwork: true,
+      );
     }
   }
 
-  // ============================================================
+  // ================================================================
   // BUILD
-  // ============================================================
+  // ================================================================
 
   @override
   Widget build(
@@ -1787,7 +2155,8 @@ class _MapScreenState extends State<MapScreen> {
         ),
         child: ClipRect(
           child: BackdropFilter(
-            filter: ImageFilter.blur(
+            filter:
+                ImageFilter.blur(
               sigmaX: 12,
               sigmaY: 12,
             ),
@@ -1799,8 +2168,7 @@ class _MapScreenState extends State<MapScreen> {
               surfaceTintColor:
                   Colors.transparent,
               elevation: 0,
-              scrolledUnderElevation:
-                  0,
+              scrolledUnderElevation: 0,
               title: const Text(
                 'DarmowaKranówka',
                 style: TextStyle(
@@ -1814,8 +2182,7 @@ class _MapScreenState extends State<MapScreen> {
                   onPressed:
                       _openAddPlaceScreen,
                   icon: const Icon(
-                    Icons
-                        .add_location_alt,
+                    Icons.add_location_alt,
                     color: Colors.blue,
                   ),
                   label: const Text(
@@ -1828,9 +2195,7 @@ class _MapScreenState extends State<MapScreen> {
                   ),
                 ),
 
-                const SizedBox(
-                  width: 12,
-                ),
+                const SizedBox(width: 12),
               ],
             ),
           ),
@@ -1873,20 +2238,13 @@ class _MapScreenState extends State<MapScreen> {
                 );
               },
 
-              // WAŻNE:
-              // Nie filtrujemy już przez hasGesture.
+              // ====================================================
+              // NOWY MECHANIZM
               //
-              // Safari i inne przeglądarki mogą inaczej
-              // raportować źródło zmiany kamery.
-              //
-              // Debounce chroni nas przed nadmiarem query.
-              onPositionChanged:
-                  (
-                camera,
-                hasGesture,
-              ) {
-                _schedulePlacesReload();
-              },
+              // Nie używamy już onPositionChanged.
+              // ====================================================
+              onMapEvent:
+                  _handleMapEvent,
             ),
 
             children: [
@@ -1903,8 +2261,7 @@ class _MapScreenState extends State<MapScreen> {
                     MarkerClusterLayerOptions(
                   markers:
                       markers,
-                  maxClusterRadius:
-                      50,
+                  maxClusterRadius: 50,
                   size:
                       const Size(
                     58,
@@ -1916,8 +2273,7 @@ class _MapScreenState extends State<MapScreen> {
                       const EdgeInsets.all(
                     50,
                   ),
-                  maxZoom:
-                      17,
+                  maxZoom: 17,
                   builder:
                       (
                     context,
@@ -1935,8 +2291,7 @@ class _MapScreenState extends State<MapScreen> {
                           shadows:
                               const [
                             Shadow(
-                              blurRadius:
-                                  6,
+                              blurRadius: 6,
                               offset:
                                   Offset(
                                 0,
@@ -1963,8 +2318,7 @@ class _MapScreenState extends State<MapScreen> {
                                   Colors.white,
                               fontWeight:
                                   FontWeight.w800,
-                              fontSize:
-                                  14,
+                              fontSize: 14,
                             ),
                           ),
                         ),
@@ -1984,18 +2338,18 @@ class _MapScreenState extends State<MapScreen> {
             ],
           ),
 
-          // ======================================================
-          // PRZYCISKI MAPY
-          // ======================================================
+          // ========================================================
+          // MAP CONTROLS
+          // ========================================================
 
           Positioned(
             right: 14,
             bottom: 62,
             child: Column(
               children: [
-                // ------------------------------------------------
-                // RĘCZNE ODŚWIEŻENIE
-                // ------------------------------------------------
+                // --------------------------------------------------
+                // FORCE REFRESH
+                // --------------------------------------------------
 
                 Material(
                   color: Colors.white,
@@ -2006,25 +2360,25 @@ class _MapScreenState extends State<MapScreen> {
                     tooltip:
                         'Odśwież lokale',
                     onPressed: () {
-                      _mapMoveDebounce?.cancel();
+                      _scrollWheelDebounce
+                          ?.cancel();
 
-                      _loadPlacesForCurrentView();
+                      _loadPlacesForCurrentView(
+                        forceNetwork: true,
+                      );
                     },
                     icon: const Icon(
                       Icons.refresh,
-                      color:
-                          Colors.blue,
+                      color: Colors.blue,
                     ),
                   ),
                 ),
 
-                const SizedBox(
-                  height: 10,
-                ),
+                const SizedBox(height: 10),
 
-                // ------------------------------------------------
-                // MOJA LOKALIZACJA
-                // ------------------------------------------------
+                // --------------------------------------------------
+                // LOCATION
+                // --------------------------------------------------
 
                 Material(
                   color: Colors.white,
@@ -2039,8 +2393,7 @@ class _MapScreenState extends State<MapScreen> {
                             ? null
                             : () {
                                 _moveToUserLocation(
-                                  showError:
-                                      true,
+                                  showError: true,
                                 );
                               },
                     icon:
@@ -2050,8 +2403,7 @@ class _MapScreenState extends State<MapScreen> {
                                 height: 20,
                                 child:
                                     CircularProgressIndicator(
-                                  strokeWidth:
-                                      2,
+                                  strokeWidth: 2,
                                   color:
                                       Colors.blue,
                                 ),
