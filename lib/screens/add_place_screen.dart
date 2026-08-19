@@ -6,6 +6,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../models/nearby_place.dart';
+import '../widgets/location_search_dialog.dart';
 
 class AddPlaceScreen extends StatefulWidget {
   const AddPlaceScreen({super.key});
@@ -40,7 +41,6 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
   bool _isSaving = false;
 
   bool _placeWasResolved = false;
-
 
   String? _provider;
   String? _providerPlaceId;
@@ -90,8 +90,6 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
         return;
       }
 
-      // BYŁO 16.
-      // Teraz użytkownik widzi większy fragment okolicy.
       _mapController.move(
         LatLng(
           position.latitude,
@@ -102,6 +100,51 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
     } catch (_) {
       // Fallback pozostaje na Gdyni.
     }
+  }
+
+  Future<void> _openLocationSearch() async {
+    final result =
+        await showDialog<
+            LocationSearchResult>(
+      context: context,
+      builder: (context) {
+        return LocationSearchDialog(
+          functions: _functions,
+        );
+      },
+    );
+
+    if (result == null ||
+        !mounted) {
+      return;
+    }
+
+    final point =
+        LatLng(
+      result.latitude,
+      result.longitude,
+    );
+
+    _mapController.move(
+      point,
+      result.preferredZoom,
+    );
+
+    _selectLocation(
+      point,
+    );
+
+    await Future.delayed(
+      const Duration(
+        milliseconds: 150,
+      ),
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    await _resolvePlace();
   }
 
   void _selectLocation(
@@ -121,7 +164,6 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
 
       _category =
           'restaurant';
-
 
       _provider =
           null;
@@ -256,11 +298,9 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
                   const Text(
                     'W promieniu 75 metrów znaleźliśmy:',
                   ),
-
                   const SizedBox(
                     height: 14,
                   ),
-
                   ...nearbyPlaces
                       .take(3)
                       .map(
@@ -277,17 +317,14 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
                                   .start,
                           children: [
                             const Icon(
-                              Icons
-                                  .water_drop,
+                              Icons.water_drop,
                               color:
                                   Colors.blue,
                               size: 22,
                             ),
-
                             const SizedBox(
                               width: 10,
                             ),
-
                             Expanded(
                               child: Column(
                                 crossAxisAlignment:
@@ -303,29 +340,24 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
                                               .w700,
                                     ),
                                   ),
-
                                   const SizedBox(
                                     height: 2,
                                   ),
-
                                   Text(
                                     place.address,
                                   ),
-
                                   const SizedBox(
                                     height: 2,
                                   ),
-
                                   Text(
                                     'Około '
                                     '${place.distanceMeters.round()} m '
                                     'od wybranego miejsca',
                                     style:
                                         const TextStyle(
-                                      fontSize:
-                                          12,
-                                      color: Colors
-                                          .black54,
+                                      fontSize: 12,
+                                      color:
+                                          Colors.black54,
                                     ),
                                   ),
                                 ],
@@ -336,7 +368,6 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
                       );
                     },
                   ),
-
                   const Text(
                     'Dodaj nowy wpis tylko wtedy, '
                     'gdy jest to inny lokal.',
@@ -360,7 +391,6 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
                 'Anuluj',
               ),
             ),
-
             FilledButton(
               style:
                   FilledButton.styleFrom(
@@ -554,7 +584,7 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
         case 'invalid-argument':
           message =
               error.message ??
-              'Nieprawidłowe współrzędne.';
+                  'Nieprawidłowe współrzędne.';
           break;
 
         case 'unauthenticated':
@@ -577,7 +607,7 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
         default:
           message =
               error.message ??
-              'Nie udało się rozpoznać lokalu.';
+                  'Nie udało się rozpoznać lokalu.';
       }
 
       ScaffoldMessenger.of(context)
@@ -743,13 +773,13 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
         case 'invalid-argument':
           message =
               error.message ??
-              'Nieprawidłowe dane lokalu.';
+                  'Nieprawidłowe dane lokalu.';
           break;
 
         default:
           message =
               error.message ??
-              'Nie udało się dodać lokalu.';
+                  'Nie udało się dodać lokalu.';
       }
 
       ScaffoldMessenger.of(context)
@@ -778,85 +808,16 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
       );
     }
   }
-
-  Widget _buildStepHeader({
-    required String number,
-    required String title,
-    required String subtitle,
-  }) {
-    return Row(
-      crossAxisAlignment:
-          CrossAxisAlignment.start,
-      children: [
-        Container(
-          width: 28,
-          height: 28,
-          alignment:
-              Alignment.center,
-          decoration:
-              const BoxDecoration(
-            color: Colors.blue,
-            shape: BoxShape.circle,
-          ),
-          child: Text(
-            number,
-            style:
-                const TextStyle(
-              color: Colors.white,
-              fontWeight:
-                  FontWeight.w800,
-            ),
-          ),
-        ),
-
-        const SizedBox(width: 10),
-
-        Expanded(
-          child: Column(
-            crossAxisAlignment:
-                CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style:
-                    const TextStyle(
-                  fontSize: 17,
-                  fontWeight:
-                      FontWeight.w700,
-                ),
-              ),
-
-              const SizedBox(height: 3),
-
-              Text(
-                subtitle,
-                style:
-                    const TextStyle(
-                  fontSize: 13,
-                  height: 1.35,
-                  color:
-                      Colors.black54,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
+  // ==================================================================
+  // BUILD
+  // ==================================================================
 
   @override
   Widget build(
     BuildContext context,
   ) {
     final hasSelectedLocation =
-        _selectedLocation !=
-            null;
-
-    final canSearch =
-        hasSelectedLocation &&
-        !_isResolvingPlace &&
-        !_isSaving;
+        _selectedLocation != null;
 
     final formEnabled =
         _placeWasResolved &&
@@ -865,446 +826,915 @@ class _AddPlaceScreenState extends State<AddPlaceScreen> {
 
     final canAdd =
         formEnabled &&
-        _resolvedAddress !=
-            null &&
+        _resolvedAddress != null &&
         _nameController.text
             .trim()
             .isNotEmpty;
 
     return Scaffold(
       appBar: AppBar(
-        title:
-            const Text(
+        title: const Text(
           'Dodaj lokal',
         ),
       ),
       body: SafeArea(
         top: false,
-        child:
-            SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment:
-                CrossAxisAlignment
-                    .stretch,
-            children: [
-              Padding(
-                padding:
-                    const EdgeInsets
-                        .fromLTRB(
-                  16,
-                  18,
-                  16,
-                  12,
-                ),
-                child:
-                    _buildStepHeader(
-                  number: '1',
-                  title:
-                      'Wskaż lokal na mapie',
-                  subtitle:
-                      'Dotknij dokładnego miejsca restauracji, '
-                      'kawiarni lub baru.',
-                ),
+        child: LayoutBuilder(
+          builder: (
+            context,
+            constraints,
+          ) {
+            final isWide =
+                constraints.maxWidth >=
+                    700;
+
+            final mapHeight =
+                isWide
+                    ? 290.0
+                    : 245.0;
+
+            return SingleChildScrollView(
+              padding:
+                  EdgeInsets.fromLTRB(
+                isWide ? 24 : 16,
+                18,
+                isWide ? 24 : 16,
+                32,
               ),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints:
+                      const BoxConstraints(
+                    maxWidth: 720,
+                  ),
+                  child: Column(
+                    crossAxisAlignment:
+                        CrossAxisAlignment
+                            .stretch,
+                    children: [
+                      // ==================================================
+                      // INTRO
+                      // ==================================================
 
-              SizedBox(
-                height: 330,
-                child: Stack(
-                  children: [
-                    FlutterMap(
-                      mapController:
-                          _mapController,
-                      options:
-                          MapOptions(
-                        initialCenter:
-                            const LatLng(
-                          54.5189,
-                          18.5305,
+                      const Text(
+                        'Dodaj miejsce z darmową kranówką',
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight:
+                              FontWeight.w800,
+                          height: 1.2,
                         ),
-
-                        // BYŁO 14.
-                        initialZoom:
-                            13,
-
-                        interactionOptions:
-                            const InteractionOptions(
-                          flags:
-                              InteractiveFlag.drag |
-                              InteractiveFlag.pinchZoom |
-                              InteractiveFlag.doubleTapZoom |
-                              InteractiveFlag.scrollWheelZoom,
-                        ),
-
-                        onTap: (
-                          tapPosition,
-                          point,
-                        ) {
-                          _selectLocation(
-                            point,
-                          );
-                        },
                       ),
-                      children: [
-                        TileLayer(
-                          urlTemplate:
-                              'https://tile.openstreetmap.org/'
-                              '{z}/{x}/{y}.png',
-                          userAgentPackageName:
-                              'pl.freewater.app',
-                        ),
 
-                        if (_selectedLocation !=
-                            null)
-                          MarkerLayer(
-                            markers: [
-                              Marker(
-                                point:
-                                    _selectedLocation!,
-                                width:
-                                    50,
-                                height:
-                                    50,
-                                child:
-                                    Icon(
-                                  Icons
-                                      .water_drop,
-                                  size:
-                                      42,
+                      const SizedBox(
+                        height: 8,
+                      ),
+
+                      const Text(
+                        'Znajdź lokal lub adres, a następnie sprawdź '
+                        'pozycję pinezki i dane miejsca.',
+                        style: TextStyle(
+                          fontSize: 14,
+                          height: 1.45,
+                          color:
+                              Colors.black54,
+                        ),
+                      ),
+
+                      const SizedBox(
+                        height: 22,
+                      ),
+
+                      // ==================================================
+                      // SEARCH
+                      // ==================================================
+
+                      Material(
+                        color:
+                            Colors.white,
+                        elevation: 1,
+                        borderRadius:
+                            BorderRadius.circular(
+                          14,
+                        ),
+                        child: InkWell(
+                          borderRadius:
+                              BorderRadius.circular(
+                            14,
+                          ),
+                          onTap:
+                              _isSaving ||
+                                      _isResolvingPlace
+                                  ? null
+                                  : _openLocationSearch,
+                          child: Container(
+                            padding:
+                                const EdgeInsets
+                                    .symmetric(
+                              horizontal: 16,
+                              vertical: 15,
+                            ),
+                            decoration:
+                                BoxDecoration(
+                              borderRadius:
+                                  BorderRadius
+                                      .circular(
+                                14,
+                              ),
+                              border:
+                                  Border.all(
+                                color: Colors
+                                    .grey
+                                    .shade300,
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.search,
                                   color:
-                                      Colors.blue.shade700,
+                                      Colors.blue,
+                                ),
+
+                                const SizedBox(
+                                  width: 12,
+                                ),
+
+                                const Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment
+                                            .start,
+                                    children: [
+                                      Text(
+                                        'Znajdź miejsce lub adres',
+                                        style:
+                                            TextStyle(
+                                          fontWeight:
+                                              FontWeight
+                                                  .w700,
+                                          fontSize:
+                                              15,
+                                        ),
+                                      ),
+
+                                      SizedBox(
+                                        height: 2,
+                                      ),
+
+                                      Text(
+                                        'np. Rynek, Wrocław lub Świętojańska 10, Gdynia',
+                                        maxLines: 1,
+                                        overflow:
+                                            TextOverflow
+                                                .ellipsis,
+                                        style:
+                                            TextStyle(
+                                          fontSize:
+                                              12.5,
+                                          color:
+                                              Colors
+                                                  .black54,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+
+                                const SizedBox(
+                                  width: 8,
+                                ),
+
+                                const Icon(
+                                  Icons
+                                      .chevron_right,
+                                  color:
+                                      Colors.black45,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(
+                        height: 18,
+                      ),
+
+                      // ==================================================
+                      // MAP
+                      // ==================================================
+
+                      ClipRRect(
+                        borderRadius:
+                            BorderRadius.circular(
+                          16,
+                        ),
+                        child: SizedBox(
+                          height:
+                              mapHeight,
+                          child: Stack(
+                            children: [
+                              FlutterMap(
+                                mapController:
+                                    _mapController,
+                                options:
+                                    MapOptions(
+                                  initialCenter:
+                                      const LatLng(
+                                    54.5189,
+                                    18.5305,
+                                  ),
+                                  initialZoom:
+                                      13,
+                                  interactionOptions:
+                                      const InteractionOptions(
+                                    flags:
+                                        InteractiveFlag
+                                                .drag |
+                                            InteractiveFlag
+                                                .pinchZoom |
+                                            InteractiveFlag
+                                                .doubleTapZoom |
+                                            InteractiveFlag
+                                                .scrollWheelZoom,
+                                  ),
+                                  onTap: (
+                                    tapPosition,
+                                    point,
+                                  ) {
+                                    if (_isSaving ||
+                                        _isResolvingPlace) {
+                                      return;
+                                    }
+
+                                    _selectLocation(
+                                      point,
+                                    );
+
+                                    _resolvePlace();
+                                  },
+                                ),
+                                children: [
+                                  TileLayer(
+                                    urlTemplate:
+                                        'https://tile.openstreetmap.org/'
+                                        '{z}/{x}/{y}.png',
+                                    userAgentPackageName:
+                                        'pl.freewater.app',
+                                  ),
+
+                                  if (_selectedLocation !=
+                                      null)
+                                    MarkerLayer(
+                                      markers: [
+                                        Marker(
+                                          point:
+                                              _selectedLocation!,
+                                          width:
+                                              50,
+                                          height:
+                                              50,
+                                          child:
+                                              Icon(
+                                            Icons
+                                                .water_drop,
+                                            size:
+                                                42,
+                                            color: Colors
+                                                .blue
+                                                .shade700,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+
+                                  RichAttributionWidget(
+                                    attributions: [
+                                      TextSourceAttribution(
+                                        'OpenStreetMap contributors',
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+
+                              // ------------------------------------------
+                              // MAP INFO
+                              // ------------------------------------------
+
+                              Positioned(
+                                left: 12,
+                                right: 12,
+                                top: 12,
+                                child: IgnorePointer(
+                                  child:
+                                      Container(
+                                    padding:
+                                        const EdgeInsets
+                                            .symmetric(
+                                      horizontal:
+                                          12,
+                                      vertical:
+                                          9,
+                                    ),
+                                    decoration:
+                                        BoxDecoration(
+                                      color: Colors
+                                          .white
+                                          .withValues(
+                                        alpha:
+                                            0.93,
+                                      ),
+                                      borderRadius:
+                                          BorderRadius
+                                              .circular(
+                                        10,
+                                      ),
+                                      boxShadow:
+                                          const [
+                                        BoxShadow(
+                                          blurRadius:
+                                              8,
+                                          color:
+                                              Colors
+                                                  .black12,
+                                        ),
+                                      ],
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          hasSelectedLocation
+                                              ? Icons
+                                                  .location_on
+                                              : Icons
+                                                  .touch_app_outlined,
+                                          size:
+                                              19,
+                                          color:
+                                              Colors.blue,
+                                        ),
+
+                                        const SizedBox(
+                                          width:
+                                              8,
+                                        ),
+
+                                        Expanded(
+                                          child:
+                                              Text(
+                                            hasSelectedLocation
+                                                ? 'Dotknij mapy, jeśli chcesz poprawić pozycję pinezki.'
+                                                : 'Dotknij mapy, aby ustawić pinezkę ręcznie.',
+                                            style:
+                                                const TextStyle(
+                                              fontSize:
+                                                  12.5,
+                                              fontWeight:
+                                                  FontWeight
+                                                      .w600,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
                                 ),
                               ),
+
+                              // ------------------------------------------
+                              // LOCATION BUTTON
+                              // ------------------------------------------
+
+                              Positioned(
+                                right: 12,
+                                bottom: 28,
+                                child:
+                                    Material(
+                                  color:
+                                      Colors.white,
+                                  elevation:
+                                      3,
+                                  shape:
+                                      const CircleBorder(),
+                                  child:
+                                      IconButton(
+                                    tooltip:
+                                        'Moja lokalizacja',
+                                    onPressed:
+                                        _isSaving ||
+                                                _isResolvingPlace
+                                            ? null
+                                            : _moveToUserLocation,
+                                    icon:
+                                        const Icon(
+                                      Icons
+                                          .my_location,
+                                      color:
+                                          Colors.blue,
+                                    ),
+                                  ),
+                                ),
+                              ),
+
+                              // ------------------------------------------
+                              // RESOLVING OVERLAY
+                              // ------------------------------------------
+
+                              if (_isResolvingPlace)
+                                Positioned.fill(
+                                  child:
+                                      Container(
+                                    color: Colors
+                                        .white
+                                        .withValues(
+                                      alpha:
+                                          0.72,
+                                    ),
+                                    alignment:
+                                        Alignment
+                                            .center,
+                                    child:
+                                        const Column(
+                                      mainAxisSize:
+                                          MainAxisSize
+                                              .min,
+                                      children: [
+                                        CircularProgressIndicator(),
+                                        SizedBox(
+                                          height:
+                                              12,
+                                        ),
+                                        Text(
+                                          'Rozpoznaję lokal...',
+                                          style:
+                                              TextStyle(
+                                            fontWeight:
+                                                FontWeight
+                                                    .w600,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
                             ],
                           ),
-
-                        RichAttributionWidget(
-                          attributions: [
-                            TextSourceAttribution(
-                              'OpenStreetMap contributors',
-                            ),
-                          ],
                         ),
-                      ],
-                    ),
+                      ),
 
-                    Positioned(
-                      left: 16,
-                      right: 16,
-                      top: 14,
-                      child:
-                          IgnorePointer(
-                        child:
-                            Container(
+                      // ==================================================
+                      // SMALL LOCATION STATE
+                      // ==================================================
+
+                      if (hasSelectedLocation &&
+                          !_placeWasResolved &&
+                          !_isResolvingPlace) ...[
+                        const SizedBox(
+                          height: 12,
+                        ),
+
+                        Container(
                           padding:
-                              const EdgeInsets.symmetric(
-                            horizontal:
-                                14,
-                            vertical:
-                                10,
+                              const EdgeInsets
+                                  .all(
+                            12,
                           ),
                           decoration:
                               BoxDecoration(
-                            color:
-                                Colors.white.withValues(
+                            color: Colors
+                                .orange
+                                .withValues(
                               alpha:
-                                  0.92,
+                                  0.07,
                             ),
                             borderRadius:
-                                BorderRadius.circular(
+                                BorderRadius
+                                    .circular(
                               12,
                             ),
-                            boxShadow:
-                                const [
-                              BoxShadow(
-                                blurRadius:
-                                    8,
-                                color: Colors
-                                    .black12,
-                              ),
-                            ],
                           ),
                           child: Row(
                             children: [
-                              Icon(
-                                hasSelectedLocation
-                                    ? Icons.check_circle
-                                    : Icons.touch_app_outlined,
-                                color:
-                                    Colors.blue,
+                              const Icon(
+                                Icons
+                                    .info_outline,
                                 size:
                                     20,
+                                color:
+                                    Colors.orange,
                               ),
 
                               const SizedBox(
                                 width:
-                                    8,
+                                    10,
                               ),
 
-                              Expanded(
+                              const Expanded(
                                 child:
                                     Text(
-                                  hasSelectedLocation
-                                      ? 'Pinezka ustawiona. Możesz teraz wyszukać lokal.'
-                                      : 'Dotknij mapy, aby ustawić pinezkę.',
+                                  'Nie udało się jeszcze uzupełnić danych tego miejsca.',
                                   style:
-                                      const TextStyle(
-                                    fontWeight:
-                                        FontWeight.w600,
+                                      TextStyle(
+                                    fontSize:
+                                        13,
                                   ),
+                                ),
+                              ),
+
+                              TextButton(
+                                onPressed:
+                                    _resolvePlace,
+                                child:
+                                    const Text(
+                                  'Spróbuj ponownie',
                                 ),
                               ),
                             ],
                           ),
                         ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+                      ],
 
-              Padding(
-                padding:
-                    const EdgeInsets
-                        .fromLTRB(
-                  16,
-                  14,
-                  16,
-                  20,
-                ),
-                child: SizedBox(
-                  width:
-                      double.infinity,
-                  child:
-                      FilledButton.icon(
-                    onPressed:
-                        canSearch
-                            ? _resolvePlace
-                            : null,
-                    icon:
-                        _isResolvingPlace
-                            ? const SizedBox(
-                                width:
-                                    20,
-                                height:
-                                    20,
-                                child:
-                                    CircularProgressIndicator(
-                                  strokeWidth:
-                                      2,
-                                  color:
-                                      Colors.white,
+                      // ==================================================
+                      // PLACE DETAILS
+                      // ==================================================
+
+                      if (_placeWasResolved) ...[
+                        const SizedBox(
+                          height: 24,
+                        ),
+
+                        Row(
+                          children: [
+                            Container(
+                              width: 34,
+                              height: 34,
+                              decoration:
+                                  BoxDecoration(
+                                color: Colors
+                                    .blue
+                                    .withValues(
+                                  alpha:
+                                      0.10,
                                 ),
-                              )
-                            : const Icon(
-                                Icons.search,
+                                shape:
+                                    BoxShape
+                                        .circle,
                               ),
-                    label: Text(
-                      _isResolvingPlace
-                          ? 'Wyszukuję lokal...'
-                          : _placeWasResolved
-                              ? 'Wyszukaj ponownie'
-                              : 'Wyszukaj lokal',
-                    ),
-                  ),
-                ),
-              ),
+                              child:
+                                  const Icon(
+                                Icons
+                                    .storefront_outlined,
+                                color:
+                                    Colors.blue,
+                                size:
+                                    19,
+                              ),
+                            ),
 
-              const Divider(
-                height: 1,
-              ),
+                            const SizedBox(
+                              width: 10,
+                            ),
 
-              Padding(
-                padding:
-                    const EdgeInsets
-                        .fromLTRB(
-                  16,
-                  20,
-                  16,
-                  12,
-                ),
-                child:
-                    _buildStepHeader(
-                  number: '2',
-                  title:
-                      'Sprawdź dane lokalu',
-                  subtitle:
-                      'Po wyszukaniu sprawdź nazwę, '
-                      'rodzaj lokalu i adres.',
-                ),
-              ),
+                            const Expanded(
+                              child: Text(
+                                'Sprawdź dane',
+                                style:
+                                    TextStyle(
+                                  fontSize:
+                                      18,
+                                  fontWeight:
+                                      FontWeight
+                                          .w700,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
 
-              Padding(
-                padding:
-                    const EdgeInsets
-                        .fromLTRB(
-                  16,
-                  6,
-                  16,
-                  16,
-                ),
-                child: Column(
-                  children: [
-                    TextField(
-                      controller:
-                          _nameController,
-                      enabled:
-                          formEnabled,
-                      onChanged: (_) {
-                        setState(() {
-                        });
-                      },
-                      decoration:
-                          InputDecoration(
-                        labelText:
-                            'Nazwa lokalu',
-                        hintText:
-                            formEnabled
-                                ? 'Nazwa lokalu'
-                                : 'Najpierw wyszukaj lokal',
-                        border:
-                            const OutlineInputBorder(),
-                      ),
-                    ),
+                        const SizedBox(
+                          height: 14,
+                        ),
 
-                    const SizedBox(
-                      height: 14,
-                    ),
+                        Container(
+                          padding:
+                              EdgeInsets.all(
+                            isWide
+                                ? 20
+                                : 16,
+                          ),
+                          decoration:
+                              BoxDecoration(
+                            color:
+                                Colors.white,
+                            borderRadius:
+                                BorderRadius
+                                    .circular(
+                              16,
+                            ),
+                            border:
+                                Border.all(
+                              color: Colors
+                                  .grey
+                                  .shade200,
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment:
+                                CrossAxisAlignment
+                                    .stretch,
+                            children: [
+                              TextField(
+                                controller:
+                                    _nameController,
+                                enabled:
+                                    formEnabled,
+                                onChanged:
+                                    (_) {
+                                  setState(
+                                    () {},
+                                  );
+                                },
+                                decoration:
+                                    InputDecoration(
+                                  labelText:
+                                      'Nazwa lokalu',
+                                  prefixIcon:
+                                      const Icon(
+                                    Icons
+                                        .storefront_outlined,
+                                  ),
+                                  border:
+                                      OutlineInputBorder(
+                                    borderRadius:
+                                        BorderRadius
+                                            .circular(
+                                      12,
+                                    ),
+                                  ),
+                                ),
+                              ),
 
-                    DropdownButtonFormField<
-                        String>(
-                      value:
-                          _category,
-                      decoration:
-                          const InputDecoration(
-                        labelText:
-                            'Rodzaj lokalu',
-                        border:
-                            OutlineInputBorder(),
-                      ),
-                      items:
-                          const [
-                        DropdownMenuItem(
-                          value:
-                              'restaurant',
-                          child:
-                              Text(
-                            'Restauracja',
+                              const SizedBox(
+                                height:
+                                    14,
+                              ),
+
+                              DropdownButtonFormField<
+                                  String>(
+                                initialValue:
+                                    _category,
+                                decoration:
+                                    InputDecoration(
+                                  labelText:
+                                      'Rodzaj lokalu',
+                                  prefixIcon:
+                                      const Icon(
+                                    Icons
+                                        .category_outlined,
+                                  ),
+                                  border:
+                                      OutlineInputBorder(
+                                    borderRadius:
+                                        BorderRadius
+                                            .circular(
+                                      12,
+                                    ),
+                                  ),
+                                ),
+                                items:
+                                    const [
+                                  DropdownMenuItem(
+                                    value:
+                                        'restaurant',
+                                    child:
+                                        Text(
+                                      'Restauracja',
+                                    ),
+                                  ),
+                                  DropdownMenuItem(
+                                    value:
+                                        'cafe',
+                                    child:
+                                        Text(
+                                      'Kawiarnia',
+                                    ),
+                                  ),
+                                  DropdownMenuItem(
+                                    value:
+                                        'bar',
+                                    child:
+                                        Text(
+                                      'Bar',
+                                    ),
+                                  ),
+                                  DropdownMenuItem(
+                                    value:
+                                        'other',
+                                    child:
+                                        Text(
+                                      'Inne',
+                                    ),
+                                  ),
+                                ],
+                                onChanged:
+                                    formEnabled
+                                        ? (
+                                            value,
+                                          ) {
+                                            if (value ==
+                                                null) {
+                                              return;
+                                            }
+
+                                            setState(
+                                              () {
+                                                _category =
+                                                    value;
+                                              },
+                                            );
+                                          }
+                                        : null,
+                              ),
+
+                              if (_resolvedAddress !=
+                                  null) ...[
+                                const SizedBox(
+                                  height:
+                                      16,
+                                ),
+
+                                Row(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment
+                                          .start,
+                                  children: [
+                                    const Padding(
+                                      padding:
+                                          EdgeInsets
+                                              .only(
+                                        top:
+                                            1,
+                                      ),
+                                      child:
+                                          Icon(
+                                        Icons
+                                            .location_on_outlined,
+                                        color:
+                                            Colors.blue,
+                                        size:
+                                            21,
+                                      ),
+                                    ),
+
+                                    const SizedBox(
+                                      width:
+                                          9,
+                                    ),
+
+                                    Expanded(
+                                      child:
+                                          Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment
+                                                .start,
+                                        children: [
+                                          const Text(
+                                            'Adres',
+                                            style:
+                                                TextStyle(
+                                              fontSize:
+                                                  12,
+                                              color:
+                                                  Colors.black54,
+                                              fontWeight:
+                                                  FontWeight.w600,
+                                            ),
+                                          ),
+
+                                          const SizedBox(
+                                            height:
+                                                2,
+                                          ),
+
+                                          Text(
+                                            _resolvedAddress!,
+                                            style:
+                                                const TextStyle(
+                                              fontSize:
+                                                  14,
+                                              height:
+                                                  1.35,
+                                              fontWeight:
+                                                  FontWeight.w500,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ],
                           ),
                         ),
-                        DropdownMenuItem(
-                          value:
-                              'cafe',
-                          child:
-                              Text(
-                            'Kawiarnia',
-                          ),
+
+                        const SizedBox(
+                          height: 22,
                         ),
-                        DropdownMenuItem(
-                          value:
-                              'bar',
+
+                        SizedBox(
+                          width:
+                              double.infinity,
                           child:
-                              Text(
-                            'Bar',
-                          ),
-                        ),
-                        DropdownMenuItem(
-                          value:
-                              'other',
-                          child:
-                              Text(
-                            'Inne',
+                              FilledButton.icon(
+                            style:
+                                FilledButton
+                                    .styleFrom(
+                              backgroundColor:
+                                  Colors.blue,
+                              foregroundColor:
+                                  Colors.white,
+                              padding:
+                                  const EdgeInsets
+                                      .symmetric(
+                                vertical:
+                                    15,
+                              ),
+                            ),
+                            onPressed:
+                                _isSaving ||
+                                        !canAdd
+                                    ? null
+                                    : _savePlace,
+                            icon:
+                                _isSaving
+                                    ? const SizedBox(
+                                        width:
+                                            20,
+                                        height:
+                                            20,
+                                        child:
+                                            CircularProgressIndicator(
+                                          strokeWidth:
+                                              2,
+                                          color:
+                                              Colors.white,
+                                        ),
+                                      )
+                                    : const Icon(
+                                        Icons
+                                            .add_location_alt_outlined,
+                                      ),
+                            label: Text(
+                              _isSaving
+                                  ? 'Dodaję lokal...'
+                                  : 'Dodaj lokal',
+                              style:
+                                  const TextStyle(
+                                fontWeight:
+                                    FontWeight
+                                        .w700,
+                              ),
+                            ),
                           ),
                         ),
                       ],
-                      onChanged:
-                          formEnabled
-                              ? (value) {
-                                  if (value ==
-                                      null) {
-                                    return;
-                                  }
 
-                                  setState(
-                                    () {
-                                      _category =
-                                          value;
-                                    },
-                                  );
-                                }
-                              : null,
-                    ),
+                      // ==================================================
+                      // EMPTY STATE
+                      // ==================================================
 
-                    const SizedBox(
-                      height: 14,
-                    ),
-
-                    Container(
-                      width:
-                          double.infinity,
-                      padding:
-                          const EdgeInsets
-                              .all(
-                        14,
-                      ),
-                      decoration:
-                          BoxDecoration(
-                        color:
-                            formEnabled
-                                ? Colors.blue.withValues(
-                                    alpha:
-                                        0.07,
-                                  )
-                                : Colors.grey.shade100,
-                        borderRadius:
-                            BorderRadius.circular(
-                          12,
+                      if (!_placeWasResolved &&
+                          !hasSelectedLocation &&
+                          !_isResolvingPlace) ...[
+                        const SizedBox(
+                          height: 18,
                         ),
-                      ),
-                      child: Text(
-                        _resolvedAddress ??
-                            'Najpierw wyszukaj lokal',
-                      ),
-                    ),
 
-                    const SizedBox(
-                      height: 22,
-                    ),
-
-                    SizedBox(
-                      width:
-                          double.infinity,
-                      child:
-                          FilledButton(
-                        onPressed:
-                            _isSaving ||
-                                    !canAdd
-                                ? null
-                                : _savePlace,
-                        child:
-                            _isSaving
-                                ? const SizedBox(
-                                    width:
-                                        22,
-                                    height:
-                                        22,
-                                    child:
-                                        CircularProgressIndicator(
-                                      strokeWidth:
-                                          2,
-                                      color:
-                                          Colors.white,
-                                    ),
-                                  )
-                                : const Text(
-                                    'Dodaj lokal',
-                                  ),
-                      ),
-                    ),
-                  ],
+                        const Center(
+                          child: Text(
+                            'Najpierw wyszukaj miejsce lub wskaż je na mapie.',
+                            textAlign:
+                                TextAlign
+                                    .center,
+                            style:
+                                TextStyle(
+                              fontSize:
+                                  13,
+                              color:
+                                  Colors.black45,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
               ),
-            ],
-          ),
+            );
+          },
         ),
       ),
     );

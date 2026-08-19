@@ -18,6 +18,7 @@ import 'models/place_report_data.dart';
 import 'screens/add_place_screen.dart';
 import 'services/authentication_service.dart';
 import 'widgets/report_problem_sheet.dart';
+import 'widgets/location_search_dialog.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -27,11 +28,7 @@ Future<void> main() async {
   );
 
   await FirebaseAppCheck.instance.activate(
-    webProvider: ReCaptchaEnterpriseProvider(
-      // ============================================================
-      // WAŻNE:
-      // WSTAW TUTAJ SWÓJ PRAWDZIWY RECAPTCHA ENTERPRISE SITE KEY.
-      // ============================================================
+    providerWeb: ReCaptchaEnterpriseProvider(
       '6LcV9XctAAAAAPq6-9vgUa0MilY_scUZZ-_OW2aA',
     ),
   );
@@ -103,53 +100,30 @@ class _MapScreenState extends State<MapScreen> {
 
   List<QueryDocumentSnapshot<Map<String, dynamic>>> _places = [];
 
-  // ----------------------------------------------------------------
-  // CACHE
-  // ----------------------------------------------------------------
-
   final List<_ViewportCacheEntry> _viewportCache = [];
 
   static const int _maxViewportCacheEntries = 8;
-
-  // ----------------------------------------------------------------
-  // FIRESTORE QUERY CONTROL
-  // ----------------------------------------------------------------
 
   bool _isLoadingPlaces = false;
   bool _reloadRequestedWhileLoading = false;
 
   int _queryGeneration = 0;
 
-  // ----------------------------------------------------------------
-  // VIEWPORT WATCHER
-  // ----------------------------------------------------------------
-
   Timer? _viewportWatcher;
 
-  // Jak często sprawdzamy rzeczywiste visibleBounds.
   static const Duration _viewportCheckInterval =
       Duration(milliseconds: 400);
 
-  // Ten sam viewport musi wystąpić w dwóch kolejnych pomiarach,
-  // zanim uznamy go za stabilny.
   int _stableViewportChecks = 0;
 
   String? _lastObservedViewportSignature;
-
-  // Viewport, dla którego ostatnio poprawnie pobraliśmy dane.
   String? _lastLoadedViewportSignature;
 
-  // Ochrona przed ciągłym ponawianiem tego samego viewportu
-  // w przypadku problemu z siecią.
   String? _lastAutomaticAttemptSignature;
   DateTime? _lastAutomaticAttemptAt;
 
   static const Duration _automaticRetryCooldown =
       Duration(seconds: 10);
-
-  // ----------------------------------------------------------------
-  // STARTUP
-  // ----------------------------------------------------------------
 
   bool _introPopupShown = false;
   bool _welcomePopupShown = false;
@@ -157,22 +131,13 @@ class _MapScreenState extends State<MapScreen> {
   bool _mapReady = false;
   bool _startupStarted = false;
 
-  // ----------------------------------------------------------------
-  // LOCATION
-  // ----------------------------------------------------------------
-
   bool _isLocatingUser = false;
 
   @override
   void dispose() {
     _viewportWatcher?.cancel();
-
     super.dispose();
   }
-
-  // ==================================================================
-  // START
-  // ==================================================================
 
   Future<void> _initializeMap() async {
     if (_startupStarted) {
@@ -181,18 +146,14 @@ class _MapScreenState extends State<MapScreen> {
 
     _startupStarted = true;
 
-    // Pierwsze dane pobieramy od razu.
     await _loadPlacesForCurrentView();
 
     if (!mounted) {
       return;
     }
 
-    // Od tego momentu viewport kontrolujemy niezależnie
-    // od eventów gestów Safari.
     _startViewportWatcher();
 
-    // Geolokalizacja jest niezależna od Firestore.
     unawaited(
       _moveToUserLocation(
         showError: false,
@@ -207,10 +168,6 @@ class _MapScreenState extends State<MapScreen> {
 
     await _loadPlacesCount();
   }
-
-  // ==================================================================
-  // VIEWPORT WATCHER
-  // ==================================================================
 
   void _startViewportWatcher() {
     _viewportWatcher?.cancel();
@@ -232,9 +189,6 @@ class _MapScreenState extends State<MapScreen> {
     final bounds =
         _mapController.camera.visibleBounds;
 
-    // 5 miejsc po przecinku daje dostatecznie wysoką precyzję
-    // do wykrywania faktycznej zmiany viewportu,
-    // a jednocześnie eliminuje mikroskopijne różnice float.
     final south =
         bounds.southWest.latitude.toStringAsFixed(5);
 
@@ -258,10 +212,6 @@ class _MapScreenState extends State<MapScreen> {
     final currentSignature =
         _currentViewportSignature();
 
-    // --------------------------------------------------------------
-    // VIEWPORT WŁAŚNIE SIĘ ZMIENIŁ
-    // --------------------------------------------------------------
-
     if (currentSignature !=
         _lastObservedViewportSignature) {
       _lastObservedViewportSignature =
@@ -272,32 +222,16 @@ class _MapScreenState extends State<MapScreen> {
       return;
     }
 
-    // --------------------------------------------------------------
-    // VIEWPORT SIĘ NIE ZMIENIŁ OD POPRZEDNIEGO POMIARU
-    // --------------------------------------------------------------
-
     _stableViewportChecks++;
 
-    // Jeden stabilny pomiar po zmianie wystarczy.
-    //
-    // W praktyce oznacza to około 400–800 ms po zakończeniu
-    // przesuwania/zoomowania.
     if (_stableViewportChecks < 1) {
       return;
     }
 
-    // Dla tego viewportu mamy już aktualnie dane.
     if (currentSignature ==
         _lastLoadedViewportSignature) {
       return;
     }
-
-    // --------------------------------------------------------------
-    // COOLDOWN
-    //
-    // Jeśli query dla dokładnie tego viewportu właśnie się nie udało,
-    // nie próbujemy automatycznie co 400 ms.
-    // --------------------------------------------------------------
 
     if (_lastAutomaticAttemptSignature ==
             currentSignature &&
@@ -321,10 +255,6 @@ class _MapScreenState extends State<MapScreen> {
 
     _loadPlacesForCurrentView();
   }
-
-  // ==================================================================
-  // GEOLOCATION
-  // ==================================================================
 
   Future<void> _moveToUserLocation({
     required bool showError,
@@ -394,7 +324,6 @@ class _MapScreenState extends State<MapScreen> {
         return;
       }
 
-      // Programowy move robimy od razu.
       await _loadPlacesForCurrentView();
     } catch (_) {
       if (showError && mounted) {
@@ -415,10 +344,6 @@ class _MapScreenState extends State<MapScreen> {
       }
     }
   }
-
-  // ==================================================================
-  // CACHE
-  // ==================================================================
 
   List<QueryDocumentSnapshot<Map<String, dynamic>>>?
       _getPlacesFromViewportCache({
@@ -504,10 +429,6 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
-  // ==================================================================
-  // FIRESTORE
-  // ==================================================================
-
   Query<Map<String, dynamic>>
       _buildPlacesQuery({
     required double south,
@@ -556,10 +477,6 @@ class _MapScreenState extends State<MapScreen> {
     const timeout =
         Duration(seconds: 5);
 
-    // --------------------------------------------------------------
-    // ATTEMPT 1
-    // --------------------------------------------------------------
-
     try {
       return await _buildPlacesQuery(
         south: south,
@@ -576,10 +493,6 @@ class _MapScreenState extends State<MapScreen> {
       }
     }
 
-    // --------------------------------------------------------------
-    // SHORT DELAY
-    // --------------------------------------------------------------
-
     await Future.delayed(
       const Duration(milliseconds: 250),
     );
@@ -588,10 +501,6 @@ class _MapScreenState extends State<MapScreen> {
         _queryGeneration) {
       return null;
     }
-
-    // --------------------------------------------------------------
-    // ATTEMPT 2
-    // --------------------------------------------------------------
 
     return _buildPlacesQuery(
       south: south,
@@ -602,10 +511,6 @@ class _MapScreenState extends State<MapScreen> {
           timeout,
         );
   }
-
-  // ==================================================================
-  // LOAD CURRENT VIEWPORT
-  // ==================================================================
 
   Future<void> _loadPlacesForCurrentView({
     bool forceNetwork = false,
@@ -635,10 +540,6 @@ class _MapScreenState extends State<MapScreen> {
     final requestedViewportSignature =
         _currentViewportSignature();
 
-    // --------------------------------------------------------------
-    // CACHE FIRST
-    // --------------------------------------------------------------
-
     if (!forceNetwork) {
       final cachedPlaces =
           _getPlacesFromViewportCache(
@@ -656,10 +557,6 @@ class _MapScreenState extends State<MapScreen> {
         });
       }
     }
-
-    // --------------------------------------------------------------
-    // ONE QUERY AT A TIME
-    // --------------------------------------------------------------
 
     if (_isLoadingPlaces) {
       _reloadRequestedWhileLoading =
@@ -685,8 +582,6 @@ class _MapScreenState extends State<MapScreen> {
         return;
       }
 
-      // Jeśli użytkownik zmienił viewport podczas query,
-      // stare wyniki nie mogą nadpisać nowych.
       if (requestGeneration !=
           _queryGeneration) {
         return;
@@ -711,13 +606,6 @@ class _MapScreenState extends State<MapScreen> {
         _places =
             documents;
       });
-
-      // ------------------------------------------------------------
-      // TO JEST KLUCZ DLA WATCHERA
-      //
-      // Zapamiętujemy konkretny viewport, dla którego
-      // pobranie naprawdę zakończyło się sukcesem.
-      // ------------------------------------------------------------
 
       _lastLoadedViewportSignature =
           requestedViewportSignature;
@@ -806,7 +694,6 @@ class _MapScreenState extends State<MapScreen> {
       }
     }
   }
-
   // ==================================================================
   // INTRO
   // ==================================================================
@@ -1093,58 +980,59 @@ class _MapScreenState extends State<MapScreen> {
   // CONFIRMED COUNT
   // ==================================================================
 
-    Future<void> _loadPlacesCount() async {
-      try {
-        final results = await Future.wait([
-          FirebaseFirestore.instance
-              .collection('places')
-              .where(
-                'status',
-                isEqualTo: 'confirmed',
-              )
-              .count()
-              .get(),
-          FirebaseFirestore.instance
-              .collection('places')
-              .where(
-                'status',
-                isEqualTo: 'pending',
-              )
-              .count()
-              .get(),
-        ]);
+  Future<void> _loadPlacesCount() async {
+    try {
+      final results = await Future.wait([
+        FirebaseFirestore.instance
+            .collection('places')
+            .where(
+              'status',
+              isEqualTo: 'confirmed',
+            )
+            .count()
+            .get(),
+        FirebaseFirestore.instance
+            .collection('places')
+            .where(
+              'status',
+              isEqualTo: 'pending',
+            )
+            .count()
+            .get(),
+      ]);
 
-        if (!mounted) {
-          return;
-        }
-
-        final confirmedCount =
-            results[0].count ?? 0;
-
-        final pendingCount =
-            results[1].count ?? 0;
-
-        final totalCount =
-            confirmedCount + pendingCount;
-
-        await _showWelcomePopup(
-          totalCount,
-        );
-      } catch (_) {
-        if (!mounted) {
-          return;
-        }
-
-        await _showWelcomePopup(
-          0,
-        );
+      if (!mounted) {
+        return;
       }
-    }
 
-    Future<void> _showWelcomePopup(
+      final confirmedCount =
+          results[0].count ?? 0;
+
+      final pendingCount =
+          results[1].count ?? 0;
+
+      final totalCount =
+          confirmedCount + pendingCount;
+
+      await _showWelcomePopup(
+        totalCount,
+      );
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      await _showWelcomePopup(
+        0,
+      );
+    }
+  }
+
+  Future<void> _showWelcomePopup(
     int placesCount,
   ) async {
-    if (!mounted || _welcomePopupShown) {
+    if (!mounted ||
+        _welcomePopupShown) {
       return;
     }
 
@@ -1155,67 +1043,86 @@ class _MapScreenState extends State<MapScreen> {
       barrierDismissible: false,
       builder: (dialogContext) {
         return Dialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(
+          shape:
+              RoundedRectangleBorder(
+            borderRadius:
+                BorderRadius.circular(
               20,
             ),
           ),
           child: ConstrainedBox(
-            constraints: const BoxConstraints(
+            constraints:
+                const BoxConstraints(
               maxWidth: 420,
             ),
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(
+              padding:
+                  const EdgeInsets
+                      .fromLTRB(
                 28,
                 30,
                 28,
                 24,
               ),
               child: Column(
-                mainAxisSize: MainAxisSize.min,
+                mainAxisSize:
+                    MainAxisSize.min,
                 children: [
                   const Icon(
                     Icons.water_drop,
                     color: Colors.blue,
                     size: 48,
                   ),
-
-                  const SizedBox(height: 16),
-
+                  const SizedBox(
+                    height: 16,
+                  ),
                   Text(
                     placesCount == 1
                         ? 'Na mapie jest już 1 miejsce!'
                         : 'Na mapie jest już $placesCount miejsc!',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
+                    textAlign:
+                        TextAlign.center,
+                    style:
+                        const TextStyle(
                       fontSize: 22,
                       height: 1.3,
-                      fontWeight: FontWeight.w700,
+                      fontWeight:
+                          FontWeight.w700,
                     ),
                   ),
-
-                  const SizedBox(height: 12),
-
+                  const SizedBox(
+                    height: 12,
+                  ),
                   const Text(
                     'Pomóż nam rozwijać mapę — '
                     'potwierdzaj istniejące lokale i dodawaj nowe miejsca.',
-                    textAlign: TextAlign.center,
+                    textAlign:
+                        TextAlign.center,
                     style: TextStyle(
                       fontSize: 14,
                       height: 1.4,
-                      color: Colors.black54,
+                      color:
+                          Colors.black54,
                     ),
                   ),
-
-                  const SizedBox(height: 24),
-
+                  const SizedBox(
+                    height: 24,
+                  ),
                   SizedBox(
-                    width: double.infinity,
-                    child: FilledButton(
-                      style: FilledButton.styleFrom(
-                        backgroundColor: Colors.blue,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(
+                    width:
+                        double.infinity,
+                    child:
+                        FilledButton(
+                      style:
+                          FilledButton
+                              .styleFrom(
+                        backgroundColor:
+                            Colors.blue,
+                        foregroundColor:
+                            Colors.white,
+                        padding:
+                            const EdgeInsets
+                                .symmetric(
                           vertical: 14,
                         ),
                       ),
@@ -1224,10 +1131,14 @@ class _MapScreenState extends State<MapScreen> {
                           dialogContext,
                         ).pop();
                       },
-                      child: const Text(
+                      child:
+                          const Text(
                         'Sprawdź na mapie',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w600,
+                        style:
+                            TextStyle(
+                          fontWeight:
+                              FontWeight
+                                  .w600,
                         ),
                       ),
                     ),
@@ -1415,7 +1326,8 @@ class _MapScreenState extends State<MapScreen> {
 
   Future<void> _showPlace(
     BuildContext context,
-    DocumentReference<Map<String, dynamic>>
+    DocumentReference<
+            Map<String, dynamic>>
         placeReference,
     String name,
     String address,
@@ -1503,6 +1415,7 @@ class _MapScreenState extends State<MapScreen> {
     var isReporting = false;
 
     String? modalMessage;
+
     bool modalMessageIsError =
         false;
 
@@ -1541,6 +1454,7 @@ class _MapScreenState extends State<MapScreen> {
 
               setModalState(() {
                 isConfirming = true;
+
                 modalMessage = null;
               });
 
@@ -1672,6 +1586,7 @@ class _MapScreenState extends State<MapScreen> {
                             true;
                       },
                     );
+
                     break;
 
                   case 'not-found':
@@ -1884,6 +1799,7 @@ class _MapScreenState extends State<MapScreen> {
                             true;
                       },
                     );
+
                     break;
 
                   case 'not-found':
@@ -1995,7 +1911,9 @@ class _MapScreenState extends State<MapScreen> {
                     const SizedBox(
                       height: 8,
                     ),
-                    Text(address),
+                    Text(
+                      address,
+                    ),
                     const SizedBox(
                       height: 12,
                     ),
@@ -2081,8 +1999,7 @@ class _MapScreenState extends State<MapScreen> {
                           Icons
                               .water_drop,
                           color:
-                              Colors
-                                  .blue,
+                              Colors.blue,
                         ),
                         SizedBox(
                           width: 8,
@@ -2247,8 +2164,10 @@ class _MapScreenState extends State<MapScreen> {
                                   )
                                 : Icon(
                                     hasAlreadyReported
-                                        ? Icons.check_circle
-                                        : Icons.flag_outlined,
+                                        ? Icons
+                                            .check_circle
+                                        : Icons
+                                            .flag_outlined,
                                   ),
                         label: Text(
                           hasAlreadyReported
@@ -2294,15 +2213,70 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   // ==================================================================
-  // BUILD
+  // SEARCH
   // ==================================================================
 
+  Future<void> _openLocationSearch() async {
+    if (!_mapReady) {
+      return;
+    }
+
+    final result =
+        await showDialog<
+            LocationSearchResult>(
+      context: context,
+      builder: (context) {
+        return LocationSearchDialog(
+          functions: _functions,
+        );
+      },
+    );
+
+    if (result == null ||
+        !mounted ||
+        !_mapReady) {
+      return;
+    }
+
+    _mapController.move(
+      LatLng(
+        result.latitude,
+        result.longitude,
+      ),
+      result.preferredZoom,
+    );
+
+    await Future.delayed(
+      const Duration(
+        milliseconds: 250,
+      ),
+    );
+
+    if (!mounted ||
+        !_mapReady) {
+      return;
+    }
+
+    await _loadPlacesForCurrentView();
+  }
+
+  // ==================================================================
+  // BUILD
+  // ==================================================================
   @override
   Widget build(
     BuildContext context,
   ) {
     final markers =
         _buildMarkers();
+
+    final screenWidth =
+        MediaQuery.of(context)
+            .size
+            .width;
+
+    final isMobile =
+        screenWidth < 600;
 
     return Scaffold(
       extendBodyBehindAppBar: true,
@@ -2340,31 +2314,49 @@ class _MapScreenState extends State<MapScreen> {
                 ),
               ),
               actions: [
-                TextButton.icon(
+                IconButton(
+                  tooltip:
+                      'Szukaj miasta lub adresu',
                   onPressed:
-                      _openAddPlaceScreen,
+                      _openLocationSearch,
                   icon:
                       const Icon(
-                    Icons
-                        .add_location_alt,
+                    Icons.search,
                     color:
                         Colors.blue,
                   ),
-                  label:
-                      const Text(
-                    'Dodaj lokal',
-                    style:
-                        TextStyle(
+                ),
+
+                if (!isMobile)
+                  TextButton.icon(
+                    onPressed:
+                        _openAddPlaceScreen,
+                    icon:
+                        const Icon(
+                      Icons
+                          .add_location_alt,
                       color:
                           Colors.blue,
-                      fontWeight:
-                          FontWeight
-                              .w600,
+                    ),
+                    label:
+                        const Text(
+                      'Dodaj lokal',
+                      style:
+                          TextStyle(
+                        color:
+                            Colors.blue,
+                        fontWeight:
+                            FontWeight
+                                .w600,
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(
-                  width: 12,
+
+                SizedBox(
+                  width:
+                      isMobile
+                          ? 6
+                          : 12,
                 ),
               ],
             ),
@@ -2394,16 +2386,6 @@ class _MapScreenState extends State<MapScreen> {
                     InteractiveFlag
                         .scrollWheelZoom,
               ),
-
-              // ====================================================
-              // WAŻNE:
-              //
-              // Nie używamy już eventów ruchu/zoomu
-              // do sterowania Firestore.
-              //
-              // Watcher obserwuje bezpośrednio visibleBounds.
-              // ====================================================
-
               onMapReady: () {
                 _mapReady = true;
 
@@ -2424,6 +2406,7 @@ class _MapScreenState extends State<MapScreen> {
                 userAgentPackageName:
                     'pl.freewater.app',
               ),
+
               MarkerClusterLayerWidget(
                 options:
                     MarkerClusterLayerOptions(
@@ -2449,16 +2432,15 @@ class _MapScreenState extends State<MapScreen> {
                   ) {
                     return Stack(
                       alignment:
-                          Alignment
-                              .center,
+                          Alignment.center,
                       children: [
                         Icon(
-                          Icons
-                              .water_drop,
+                          Icons.water_drop,
                           size: 56,
-                          color: Colors
-                              .blue
-                              .shade700,
+                          color:
+                              Colors
+                                  .blue
+                                  .shade700,
                           shadows:
                               const [
                             Shadow(
@@ -2470,8 +2452,7 @@ class _MapScreenState extends State<MapScreen> {
                                 2,
                               ),
                               color:
-                                  Colors
-                                      .black26,
+                                  Colors.black26,
                             ),
                           ],
                         ),
@@ -2481,8 +2462,7 @@ class _MapScreenState extends State<MapScreen> {
                                   .only(
                             bottom: 5,
                           ),
-                          child:
-                              Text(
+                          child: Text(
                             clusterMarkers
                                 .length
                                 .toString(),
@@ -2503,6 +2483,7 @@ class _MapScreenState extends State<MapScreen> {
                   },
                 ),
               ),
+
               RichAttributionWidget(
                 attributions: [
                   TextSourceAttribution(
@@ -2514,7 +2495,71 @@ class _MapScreenState extends State<MapScreen> {
           ),
 
           // ========================================================
-          // CONTROLS
+          // MOBILE ADD PLACE PILL
+          // ========================================================
+
+          if (isMobile)
+            Positioned(
+              left: 14,
+              bottom: 62,
+              child: Material(
+                color:
+                    Colors.blue,
+                elevation: 4,
+                borderRadius:
+                    BorderRadius.circular(
+                  24,
+                ),
+                child: InkWell(
+                  borderRadius:
+                      BorderRadius.circular(
+                    24,
+                  ),
+                  onTap:
+                      _openAddPlaceScreen,
+                  child: const Padding(
+                    padding:
+                        EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    child: Row(
+                      mainAxisSize:
+                          MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons
+                              .add_location_alt,
+                          color:
+                              Colors.white,
+                          size:
+                              20,
+                        ),
+                        SizedBox(
+                          width: 8,
+                        ),
+                        Text(
+                          'Dodaj lokal',
+                          style:
+                              TextStyle(
+                            color:
+                                Colors.white,
+                            fontWeight:
+                                FontWeight
+                                    .w700,
+                            fontSize:
+                                14,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
+          // ========================================================
+          // MAP CONTROLS
           // ========================================================
 
           Positioned(
@@ -2532,7 +2577,6 @@ class _MapScreenState extends State<MapScreen> {
                     tooltip:
                         'Odśwież lokale',
                     onPressed: () {
-                      // Manualny refresh ignoruje cooldown.
                       _lastAutomaticAttemptSignature =
                           null;
 
@@ -2552,9 +2596,11 @@ class _MapScreenState extends State<MapScreen> {
                     ),
                   ),
                 ),
+
                 const SizedBox(
                   height: 10,
                 ),
+
                 Material(
                   color:
                       Colors.white,

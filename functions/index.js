@@ -8,7 +8,10 @@ const {
   Timestamp,
 } = require("firebase-admin/firestore");
 
-const { geohashForLocation } = require("geofire-common");
+const {
+  geohashForLocation,
+  geohashQueryBounds,
+} = require("geofire-common");
 
 const GEOAPIFY_API_KEY = defineSecret("GEOAPIFY_API_KEY");
 
@@ -668,6 +671,284 @@ exports.reportPlace = onCall(
 
 /*
  * ============================================================
+ * GET PLACES IN VIEWPORT — GEOHASH
+ * ============================================================
+ */
+
+exports.getPlacesInViewport = onCall(
+  {
+    region: "europe-central2",
+    enforceAppCheck: true,
+  },
+  async (request) => {
+    const {
+      south,
+      north,
+      west,
+      east,
+    } = request.data ?? {};
+
+    if (
+      typeof south !== "number" ||
+      typeof north !== "number" ||
+      typeof west !== "number" ||
+      typeof east !== "number" ||
+      south < -90 ||
+      south > 90 ||
+      north < -90 ||
+      north > 90 ||
+      west < -180 ||
+      west > 180 ||
+      east < -180 ||
+      east > 180 ||
+      south >= north
+    ) {
+      throw new HttpsError(
+        "invalid-argument",
+        "Nieprawidłowe granice mapy.",
+      );
+    }
+
+    if (west >= east) {
+      throw new HttpsError(
+        "invalid-argument",
+        "Viewport przecinający antypołudnik nie jest obsługiwany.",
+      );
+    }
+
+    const centerLatitude =
+      (south + north) / 2;
+
+    const centerLongitude =
+      (west + east) / 2;
+
+    const radiusMeters = Math.max(
+      haversineDistanceMeters(
+        centerLatitude,
+        centerLongitude,
+        south,
+        west,
+      ),
+      haversineDistanceMeters(
+        centerLatitude,
+        centerLongitude,
+        south,
+        east,
+      ),
+      haversineDistanceMeters(
+        centerLatitude,
+        centerLongitude,
+        north,
+        west,
+      ),
+      haversineDistanceMeters(
+        centerLatitude,
+        centerLongitude,
+        north,
+        east,
+      ),
+    );
+
+    if (
+      !Number.isFinite(radiusMeters) ||
+      radiusMeters <= 0 ||
+      radiusMeters > 2_000_000
+    ) {
+      throw new HttpsError(
+        "invalid-argument",
+        "Widoczny obszar mapy jest zbyt duży.",
+      );
+    }
+
+    const bounds =
+      geohashQueryBounds(
+        [
+          centerLatitude,
+          centerLongitude,
+        ],
+        radiusMeters,
+      );
+
+    const db = getFirestore();
+
+    const snapshots =
+      await Promise.all(
+        bounds.map(
+          ([start, end]) =>
+            db
+              .collection("places")
+              .orderBy("geohash")
+              .startAt(start)
+              .endAt(end)
+              .get(),
+        ),
+      );
+
+    const allowedStatuses =
+      new Set([
+        "pending",
+        "confirmed",
+        "disputed",
+      ]);
+
+    const uniquePlaces =
+      new Map();
+
+    for (const snapshot of snapshots) {
+      for (const document of snapshot.docs) {
+        if (uniquePlaces.has(document.id)) {
+          continue;
+        }
+
+        const data =
+          document.data();
+
+        const latitude =
+          typeof data.lat === "number"
+            ? data.lat
+            : data.location?.latitude;
+
+        const longitude =
+          typeof data.lng === "number"
+            ? data.lng
+            : data.location?.longitude;
+
+        if (
+          typeof latitude !== "number" ||
+          typeof longitude !== "number"
+        ) {
+          continue;
+        }
+
+        if (
+          latitude < south ||
+          latitude > north ||
+          longitude < west ||
+          longitude > east
+        ) {
+          continue;
+        }
+
+        if (!allowedStatuses.has(data.status)) {
+          continue;
+        }
+
+        uniquePlaces.set(
+          document.id,
+          {
+            id: document.id,
+
+            name:
+              typeof data.name === "string"
+                ? data.name
+                : "Nieznany lokal",
+
+            address:
+              typeof data.address === "string"
+                ? data.address
+                : "Brak adresu",
+
+            lat: latitude,
+            lng: longitude,
+
+            category:
+              typeof data.category === "string"
+                ? data.category
+                : "other",
+
+            status:
+              typeof data.status === "string"
+                ? data.status
+                : "pending",
+
+            confirmations:
+              Number(data.confirmations) || 0,
+
+            disputeReason:
+              typeof data.disputeReason === "string"
+                ? data.disputeReason
+                : null,
+
+            createdAt:
+              typeof data.createdAt?.toMillis === "function"
+                ? data.createdAt.toMillis()
+                : null,
+
+            lastConfirmedAt:
+              typeof data.lastConfirmedAt?.toMillis === "function"
+                ? data.lastConfirmedAt.toMillis()
+                : null,
+          },
+        );
+      }
+    }
+
+    const places =
+      Array.from(
+        uniquePlaces.values(),
+      );
+
+    if (places.length > 1500) {
+      throw new HttpsError(
+        "resource-exhausted",
+        "W widocznym obszarze znajduje się zbyt wiele lokali. Przybliż mapę.",
+      );
+    }
+
+    return {
+      places,
+      count: places.length,
+    };
+  },
+);
+
+function haversineDistanceMeters(
+  latitude1,
+  longitude1,
+  latitude2,
+  longitude2,
+) {
+  const earthRadiusMeters =
+    6_371_000;
+
+  const toRadians =
+    (degrees) =>
+      (degrees * Math.PI) / 180;
+
+  const latitudeDelta =
+    toRadians(
+      latitude2 - latitude1,
+    );
+
+  const longitudeDelta =
+    toRadians(
+      longitude2 - longitude1,
+    );
+
+  const latitude1Radians =
+    toRadians(latitude1);
+
+  const latitude2Radians =
+    toRadians(latitude2);
+
+  const a =
+    Math.sin(latitudeDelta / 2) ** 2 +
+    Math.cos(latitude1Radians) *
+      Math.cos(latitude2Radians) *
+      Math.sin(longitudeDelta / 2) ** 2;
+
+  const c =
+    2 *
+    Math.atan2(
+      Math.sqrt(a),
+      Math.sqrt(1 - a),
+    );
+
+  return earthRadiusMeters * c;
+}
+
+/*
+ * ============================================================
  * RECOGNIZE PLACE — GEOAPIFY
  * ============================================================
  */
@@ -879,6 +1160,149 @@ exports.recognizePlace = onCall(
       distance:
         placeProperties?.distance ??
         null,
+    };
+  },
+);
+
+/*
+ * ============================================================
+ * SEARCH LOCATION — GEOAPIFY
+ * ============================================================
+ */
+
+exports.searchLocation = onCall(
+  {
+    region: "europe-central2",
+    enforceAppCheck: true,
+    secrets: [
+      GEOAPIFY_API_KEY,
+    ],
+  },
+  async (request) => {
+    requireAnonymousUser(request);
+
+    const rawQuery =
+      request.data?.query;
+
+    if (typeof rawQuery !== "string") {
+      throw new HttpsError(
+        "invalid-argument",
+        "Brak tekstu wyszukiwania.",
+      );
+    }
+
+    const query =
+      rawQuery.trim();
+
+    if (
+      query.length < 3 ||
+      query.length > 120
+    ) {
+      throw new HttpsError(
+        "invalid-argument",
+        "Wyszukiwana fraza musi mieć od 3 do 120 znaków.",
+      );
+    }
+
+    const apiKey =
+      GEOAPIFY_API_KEY.value();
+
+    const searchUrl =
+      "https://api.geoapify.com/v1/geocode/search" +
+      `?text=${encodeURIComponent(query)}` +
+      "&format=json" +
+      "&filter=countrycode:pl" +
+      "&lang=pl" +
+      "&limit=8" +
+      `&apiKey=${encodeURIComponent(apiKey)}`;
+
+    let response;
+
+    try {
+      response =
+        await fetch(searchUrl);
+    } catch (error) {
+      console.error(
+        "Geoapify Search network error:",
+        error,
+      );
+
+      throw new HttpsError(
+        "internal",
+        "Nie udało się połączyć z usługą wyszukiwania lokalizacji.",
+      );
+    }
+
+    if (!response.ok) {
+      console.error(
+        "Geoapify Search error:",
+        response.status,
+        await response.text(),
+      );
+
+      throw new HttpsError(
+        "internal",
+        "Nie udało się wyszukać lokalizacji.",
+      );
+    }
+
+    const data =
+      await response.json();
+
+    const rawResults =
+      Array.isArray(data?.results)
+        ? data.results
+        : [];
+
+    const results =
+      rawResults
+        .filter(
+          (result) =>
+            typeof result?.lat === "number" &&
+            typeof result?.lon === "number",
+        )
+        .map(
+          (result) => ({
+            name:
+              result.name ??
+              result.city ??
+              result.street ??
+              result.formatted ??
+              query,
+
+            formatted:
+              result.formatted ??
+              null,
+
+            lat:
+              result.lat,
+
+            lng:
+              result.lon,
+
+            resultType:
+              result.result_type ??
+              null,
+
+            city:
+              result.city ??
+              result.town ??
+              result.village ??
+              null,
+
+            postcode:
+              result.postcode ??
+              null,
+
+            placeId:
+              result.place_id ??
+              null,
+          }),
+        );
+
+    return {
+      results,
+      count: results.length,
     };
   },
 );
