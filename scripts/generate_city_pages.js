@@ -1,0 +1,1140 @@
+const fs = require("fs");
+const path = require("path");
+const admin = require("../functions/node_modules/firebase-admin");
+
+admin.initializeApp();
+
+const db = admin.firestore();
+
+const ROOT = path.resolve(__dirname, "..");
+const WEB_DIR = path.join(ROOT, "web");
+
+const CITY_LOCATIVE = new Map([
+  ["gdansk", "Gdańsku"],
+  ["gdynia", "Gdyni"],
+  ["krakow", "Krakowie"],
+  ["poznan", "Poznaniu"],
+  ["warszawa", "Warszawie"],
+  ["wroclaw", "Wrocławiu"],
+]);
+
+function cityLocative(city) {
+  return CITY_LOCATIVE.get(city.slug) ?? city.name;
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function formatAddress(address) {
+  return String(address ?? "")
+    .replace(/,\s*Poland\s*$/i, "")
+    .replace(/,\s*Polska\s*$/i, "")
+    .trim();
+}
+
+function formatDate(timestamp) {
+  if (!timestamp || typeof timestamp.toDate !== "function") {
+    return "";
+  }
+
+  const date = timestamp.toDate();
+
+  return new Intl.DateTimeFormat("pl-PL", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    timeZone: "Europe/Warsaw",
+  }).format(date);
+}
+
+function confirmationLabel(count) {
+  if (count === 1) {
+    return "1 potwierdzenie";
+  }
+
+  const lastTwo = count % 100;
+  const last = count % 10;
+
+  if (
+    last >= 2 &&
+    last <= 4 &&
+    !(lastTwo >= 12 && lastTwo <= 14)
+  ) {
+    return `${count} potwierdzenia`;
+  }
+
+  return `${count} potwierdzeń`;
+}
+
+function buildStructuredData(city, places) {
+  return JSON.stringify(
+    {
+      "@context": "https://schema.org",
+      "@type": "CollectionPage",
+      name: `Darmowa kranówka w ${cityLocative(city)}`,
+      url: `https://darmowakranowka.pl/${city.slug}/`,
+      description:
+        `Lista miejsc w ${cityLocative(city)}, które według społeczności DarmowaKranówka ` +
+        `podają darmową wodę z kranu do zamówienia.`,
+      inLanguage: "pl-PL",
+      isPartOf: {
+        "@type": "WebSite",
+        name: "DarmowaKranówka",
+        url: "https://darmowakranowka.pl/",
+      },
+      mainEntity: {
+        "@type": "ItemList",
+        numberOfItems: places.length,
+        itemListElement: places.map((place, index) => ({
+          "@type": "ListItem",
+          position: index + 1,
+          name: place.name,
+        })),
+      },
+    },
+    null,
+    2
+  );
+}
+
+function buildPlaceCard(place, confirmed) {
+  const statusClass = confirmed
+    ? "badge-confirmed"
+    : "badge-pending";
+
+  const statusText = confirmed
+    ? "Potwierdzone"
+    : "Do potwierdzenia";
+
+  const dateText = place.lastConfirmedAt
+    ? formatDate(place.lastConfirmedAt)
+    : "";
+
+  const confirmationText = confirmationLabel(
+    place.confirmations
+  );
+
+  return `
+          <article class="place">
+            <div class="place-top">
+              <div>
+                <h3>${escapeHtml(place.name)}</h3>
+                <p class="place-address">
+                  ${escapeHtml(formatAddress(place.address))}
+                </p>
+              </div>
+
+              <span class="badge ${statusClass}">
+                ${statusText}
+              </span>
+            </div>
+
+            <div class="place-meta">
+              <span>
+                ${escapeHtml(confirmationText)}
+              </span>
+              ${
+                dateText
+                  ? `
+              <span>
+                ostatnio: ${escapeHtml(dateText)}
+              </span>`
+                  : ""
+              }
+            </div>
+          </article>`;
+}
+
+function buildCityPage(city, places) {
+  const confirmedPlaces = places
+    .filter((place) => place.status === "confirmed")
+    .sort((a, b) => {
+      if (b.confirmations !== a.confirmations) {
+        return b.confirmations - a.confirmations;
+      }
+
+      return a.name.localeCompare(b.name, "pl");
+    });
+
+  const pendingPlaces = places
+    .filter((place) => place.status === "pending")
+    .sort((a, b) =>
+      a.name.localeCompare(b.name, "pl")
+    );
+
+  const confirmedCount = confirmedPlaces.length;
+  const totalCount = places.length;
+
+  const structuredData = buildStructuredData(
+    city,
+    [...confirmedPlaces, ...pendingPlaces]
+  );
+
+  return `<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <title>
+    Darmowa kranówka w ${escapeHtml(cityLocative(city))} – restauracje, kawiarnie i bary | DarmowaKranówka
+  </title>
+
+  <meta
+    name="description"
+    content="Sprawdź miejsca w ${escapeHtml(cityLocative(city))}, które podają darmową wodę z kranu do zamówienia. ${totalCount} lokali na społecznościowej mapie DarmowaKranówka, w tym ${confirmedCount} potwierdzonych przez użytkowników."
+  >
+
+  <meta name="robots" content="index, follow">
+
+  <link
+    rel="canonical"
+    href="https://darmowakranowka.pl/${escapeHtml(city.slug)}/"
+  >
+
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="DarmowaKranówka">
+
+  <meta
+    property="og:title"
+    content="Darmowa kranówka w ${escapeHtml(cityLocative(city))} – ${totalCount} miejsc | DarmowaKranówka"
+  >
+
+  <meta
+    property="og:description"
+    content="Sprawdź restauracje, kawiarnie i bary w ${escapeHtml(cityLocative(city))}, które podają darmową wodę z kranu do zamówienia."
+  >
+
+  <meta
+    property="og:url"
+    content="https://darmowakranowka.pl/${escapeHtml(city.slug)}/"
+  >
+
+  <meta property="og:locale" content="pl_PL">
+
+  <meta name="twitter:card" content="summary">
+
+  <meta
+    name="twitter:title"
+    content="Darmowa kranówka w ${escapeHtml(cityLocative(city))} | DarmowaKranówka"
+  >
+
+  <meta
+    name="twitter:description"
+    content="${totalCount} miejsc w ${escapeHtml(cityLocative(city))} na społecznościowej mapie DarmowaKranówka."
+  >
+
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="apple-touch-icon" href="/icons/Icon-192.png">
+
+  <link
+    href="https://fonts.googleapis.com/icon?family=Material+Icons"
+    rel="stylesheet"
+  >
+
+  <script type="application/ld+json">
+${structuredData}
+  </script>
+
+  <style>
+    :root {
+      --blue: #1976d2;
+      --blue-dark: #125ba5;
+      --blue-soft: #eef6ff;
+      --green: #14804a;
+      --green-soft: #edf8f2;
+      --amber: #9a6700;
+      --amber-soft: #fff7e6;
+      --text: #16202a;
+      --muted: #5f6b76;
+      --border: #e4e9ef;
+      --background: #ffffff;
+      --section: #f8fafc;
+      --max-width: 1100px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      background: var(--background);
+      color: var(--text);
+      font-family:
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        Roboto,
+        Helvetica,
+        Arial,
+        sans-serif;
+      line-height: 1.6;
+    }
+
+    a {
+      color: inherit;
+    }
+
+    .container {
+      width: min(calc(100% - 40px), var(--max-width));
+      margin: 0 auto;
+    }
+
+    .material-icons {
+      font-family: "Material Icons";
+      font-weight: normal;
+      font-style: normal;
+      display: inline-block;
+      line-height: 1;
+      letter-spacing: normal;
+      text-transform: none;
+      white-space: nowrap;
+      word-wrap: normal;
+      direction: ltr;
+      -webkit-font-feature-settings: "liga";
+      -webkit-font-smoothing: antialiased;
+      font-feature-settings: "liga";
+    }
+
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      background: rgba(255, 255, 255, 0.94);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid rgba(228, 233, 239, 0.8);
+    }
+
+    .nav {
+      min-height: 68px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      text-decoration: none;
+      font-size: 19px;
+      font-weight: 750;
+      color: var(--blue);
+    }
+
+    .brand-icon {
+      color: var(--blue);
+      font-size: 29px;
+    }
+
+    .nav-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .nav-link {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 650;
+    }
+
+    .nav-link:hover {
+      color: var(--blue);
+    }
+
+    .map-link {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 40px;
+      padding: 0 14px;
+      border-radius: 10px;
+      background: var(--blue);
+      color: #ffffff;
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .map-link:hover {
+      background: var(--blue-dark);
+    }
+
+    .hero {
+      padding: 82px 0 66px;
+      background:
+        radial-gradient(
+          circle at 85% 15%,
+          rgba(25, 118, 210, 0.11),
+          transparent 34%
+        ),
+        linear-gradient(
+          180deg,
+          #ffffff 0%,
+          #fbfdff 100%
+        );
+    }
+
+    .breadcrumbs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 28px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .breadcrumbs a {
+      color: var(--blue-dark);
+      text-decoration: none;
+    }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.3fr) minmax(280px, 0.7fr);
+      gap: 60px;
+      align-items: center;
+    }
+
+    .eyebrow {
+      margin-bottom: 12px;
+      color: var(--blue);
+      font-size: 13px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.7px;
+    }
+
+    h1 {
+      max-width: 760px;
+      margin: 0;
+      font-size: clamp(40px, 6vw, 64px);
+      line-height: 1.06;
+      letter-spacing: -2px;
+    }
+
+    .hero-description {
+      max-width: 720px;
+      margin: 24px 0 0;
+      color: var(--muted);
+      font-size: 19px;
+    }
+
+    .hero-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 30px;
+    }
+
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 50px;
+      padding: 0 21px;
+      border-radius: 12px;
+      text-decoration: none;
+      font-size: 15px;
+      font-weight: 700;
+    }
+
+    .button-primary {
+      background: var(--blue);
+      color: #ffffff;
+    }
+
+    .button-primary:hover {
+      background: var(--blue-dark);
+    }
+
+    .button-secondary {
+      background: var(--blue-soft);
+      color: var(--blue-dark);
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 14px;
+    }
+
+    .stat {
+      padding: 22px;
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      background: #ffffff;
+    }
+
+    .stat-value {
+      display: block;
+      margin-bottom: 3px;
+      color: var(--blue-dark);
+      font-size: 32px;
+      line-height: 1;
+      font-weight: 800;
+    }
+
+    .stat-label {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    section {
+      padding: 78px 0;
+    }
+
+    .section-soft {
+      background: var(--section);
+    }
+
+    .section-heading {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 24px;
+      margin-bottom: 34px;
+    }
+
+    .section-label {
+      margin-bottom: 8px;
+      color: var(--blue);
+      font-size: 13px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.7px;
+    }
+
+    h2 {
+      margin: 0;
+      font-size: clamp(29px, 4vw, 40px);
+      line-height: 1.15;
+      letter-spacing: -1px;
+    }
+
+    .section-note {
+      max-width: 360px;
+      color: var(--muted);
+      font-size: 14px;
+      text-align: right;
+    }
+
+    .places {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+    }
+
+    .place {
+      padding: 24px;
+      border: 1px solid var(--border);
+      border-radius: 17px;
+      background: #ffffff;
+    }
+
+    .place-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 18px;
+    }
+
+    .place h3 {
+      margin: 0;
+      font-size: 19px;
+      line-height: 1.3;
+    }
+
+    .place-address {
+      margin: 9px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .badge {
+      flex-shrink: 0;
+      display: inline-flex;
+      align-items: center;
+      padding: 5px 9px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .badge-confirmed {
+      color: var(--green);
+      background: var(--green-soft);
+    }
+
+    .badge-pending {
+      color: var(--amber);
+      background: var(--amber-soft);
+    }
+
+    .place-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 14px;
+      margin-top: 17px;
+      padding-top: 15px;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .place-meta strong {
+      color: var(--text);
+    }
+
+    .intro-copy {
+      max-width: 820px;
+      color: var(--muted);
+      font-size: 17px;
+    }
+
+    .intro-copy p {
+      margin: 0 0 18px;
+    }
+
+    .intro-copy strong {
+      color: var(--text);
+    }
+
+    .final-cta {
+      text-align: center;
+    }
+
+    .final-drop {
+      display: block;
+      margin: 0 auto 15px;
+      color: var(--blue);
+      font-size: 44px;
+    }
+
+    .final-cta h2 {
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .final-cta p {
+      max-width: 620px;
+      margin: 18px auto 28px;
+      color: var(--muted);
+      font-size: 17px;
+    }
+
+    footer {
+      padding: 30px 0;
+      border-top: 1px solid var(--border);
+    }
+
+    .footer-inner {
+      display: flex;
+      justify-content: space-between;
+      gap: 24px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .footer-inner a {
+      color: var(--blue-dark);
+      text-decoration: none;
+    }
+
+    @media (max-width: 760px) {
+      .container {
+        width: min(calc(100% - 30px), var(--max-width));
+      }
+
+      .nav {
+        min-height: 62px;
+      }
+
+      .nav-link {
+        display: none;
+      }
+
+      .hero {
+        padding: 54px 0 52px;
+      }
+
+      .hero-grid {
+        grid-template-columns: 1fr;
+        gap: 32px;
+      }
+
+      .hero-actions {
+        flex-direction: column;
+      }
+
+      .button {
+        width: 100%;
+      }
+
+      .stats {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .section-heading {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .section-note {
+        text-align: left;
+      }
+
+      .places {
+        grid-template-columns: 1fr;
+      }
+
+      section {
+        padding: 62px 0;
+      }
+
+      .footer-inner {
+        flex-direction: column;
+        gap: 8px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <header>
+    <div class="container nav">
+
+      <a class="brand" href="/">
+        <span class="material-icons brand-icon" aria-hidden="true">
+          water_drop
+        </span>
+        DarmowaKranówka
+      </a>
+
+      <div class="nav-actions">
+        <a class="nav-link" href="/">
+          Strona główna
+        </a>
+
+        <a class="map-link" href="/mapa/">
+          Otwórz mapę
+        </a>
+      </div>
+
+    </div>
+  </header>
+
+  <main>
+
+    <section class="hero">
+      <div class="container">
+
+        <div class="breadcrumbs">
+          <a href="/">DarmowaKranówka</a>
+          <span>›</span>
+          <span>${escapeHtml(city.name)}</span>
+        </div>
+
+        <div class="hero-grid">
+
+          <div>
+            <div class="eyebrow">
+              ${escapeHtml(city.name)}
+            </div>
+
+            <h1>
+              Darmowa woda z kranu w ${escapeHtml(cityLocative(city))}
+            </h1>
+
+            <p class="hero-description">
+              Sprawdź restauracje, kawiarnie i inne lokale w ${escapeHtml(cityLocative(city))},
+              w których użytkownicy DarmowejKranówki otrzymali
+              darmową wodę z kranu do zamówienia.
+            </p>
+
+            <div class="hero-actions">
+
+              <a
+                class="button button-primary"
+                href="/mapa/"
+              >
+                Sprawdź na mapie
+              </a>
+
+              <a
+                class="button button-secondary"
+                href="#miejsca"
+              >
+                Zobacz listę miejsc
+              </a>
+
+            </div>
+          </div>
+
+          <div class="stats">
+
+            <div class="stat">
+              <span class="stat-value">${totalCount}</span>
+              <span class="stat-label">
+                miejsc w ${escapeHtml(cityLocative(city))}
+              </span>
+            </div>
+
+            <div class="stat">
+              <span class="stat-value">${confirmedCount}</span>
+              <span class="stat-label">
+                potwierdzonych przez społeczność
+              </span>
+            </div>
+
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="container">
+
+        <div class="section-label">
+          Darmowa kranówka w ${escapeHtml(cityLocative(city))}
+        </div>
+
+        <h2>
+          Gdzie dostać darmową wodę z kranu?
+        </h2>
+
+        <div class="intro-copy">
+
+          <p>
+            DarmowaKranówka zbiera miejsca, w których goście
+            otrzymali bezpłatną wodę z kranu przy zamówieniu.
+            W ${escapeHtml(cityLocative(city))} w bazie znajduje się obecnie
+            <strong>${totalCount} lokali</strong>.
+          </p>
+
+          <p>
+            Część miejsc została już wielokrotnie potwierdzona
+            przez użytkowników. Pozostałe czekają na kolejne
+            potwierdzenia, dzięki którym społeczność może
+            weryfikować aktualność informacji.
+          </p>
+
+          <p>
+            Lista jest tworzona społecznościowo i może się zmieniać.
+            Jeśli znasz lokal w ${escapeHtml(cityLocative(city))}, którego jeszcze tu nie ma,
+            możesz dodać go bezpośrednio na mapie.
+          </p>
+
+        </div>
+      </div>
+    </section>
+
+    <section
+      id="miejsca"
+      class="section-soft"
+    >
+      <div class="container">
+
+        <div class="section-heading">
+
+          <div>
+            <div class="section-label">
+              Potwierdzone
+            </div>
+
+            <h2>
+              Potwierdzone miejsca w ${escapeHtml(cityLocative(city))}
+            </h2>
+          </div>
+
+          <div class="section-note">
+            Te lokale otrzymały co najmniej dwa potwierdzenia
+            od użytkowników DarmowejKranówki.
+          </div>
+
+        </div>
+
+        <div class="places">
+${confirmedPlaces
+  .map((place) => buildPlaceCard(place, true))
+  .join("\n")}
+        </div>
+      </div>
+    </section>
+
+    ${
+      pendingPlaces.length > 0
+        ? `
+    <section>
+      <div class="container">
+
+        <div class="section-heading">
+
+          <div>
+            <div class="section-label">
+              Oczekujące na potwierdzenie
+            </div>
+
+            <h2>
+              Pozostałe miejsca w ${escapeHtml(cityLocative(city))}
+            </h2>
+          </div>
+
+          <div class="section-note">
+            Te lokale zostały dodane do mapy, ale potrzebują
+            kolejnych potwierdzeń od użytkowników.
+          </div>
+
+        </div>
+
+        <div class="places">
+${pendingPlaces
+  .map((place) => buildPlaceCard(place, false))
+  .join("\n")}
+        </div>
+      </div>
+    </section>`
+        : ""
+    }
+
+    <section class="section-soft">
+      <div class="container final-cta">
+
+        <span
+          class="material-icons final-drop"
+          aria-hidden="true"
+        >
+          water_drop
+        </span>
+
+        <div class="section-label">
+          Pomóż rozwijać mapę
+        </div>
+
+        <h2>
+          Znasz jeszcze miejsce w ${escapeHtml(cityLocative(city))}?
+        </h2>
+
+        <p>
+          Otwórz mapę, potwierdź istniejący lokal albo dodaj nowe
+          miejsce, w którym dostałeś darmową wodę z kranu.
+        </p>
+
+        <a
+          class="button button-primary"
+          href="/mapa/"
+        >
+          Otwórz mapę DarmowejKranówki
+        </a>
+
+      </div>
+    </section>
+
+  </main>
+
+  <footer>
+    <div class="container footer-inner">
+
+      <div>
+        © DarmowaKranówka
+      </div>
+
+      <div>
+        <a href="/">
+          Strona główna
+        </a>
+        ·
+        <a href="/mapa/">
+          Mapa
+        </a>
+      </div>
+
+    </div>
+  </footer>
+
+</body>
+</html>`;
+}
+
+function buildSitemap(cities) {
+  const cityUrls = cities
+    .map(
+      (city) => `  <url>
+    <loc>https://darmowakranowka.pl/${city.slug}/</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>`
+    )
+    .join("\n\n");
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://darmowakranowka.pl/</loc>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+
+${cityUrls}
+</urlset>
+`;
+}
+
+async function main() {
+  console.log("");
+  console.log("======================================");
+  console.log("GENEROWANIE STRON MIAST SEO");
+  console.log("======================================");
+  console.log("");
+
+  const snapshot = await db
+    .collection("places")
+    .get();
+
+  const places = snapshot.docs
+    .map((doc) => {
+      const data = doc.data();
+
+      return {
+        id: doc.id,
+        name: String(data.name ?? "").trim(),
+        address: String(data.address ?? "").trim(),
+        city: String(data.city ?? "").trim(),
+        citySlug: String(data.citySlug ?? "").trim(),
+        status: String(data.status ?? "").trim(),
+        confirmations:
+          typeof data.confirmations === "number"
+            ? data.confirmations
+            : 0,
+        lastConfirmedAt:
+          data.lastConfirmedAt ?? null,
+      };
+    })
+    .filter(
+      (place) =>
+        place.name &&
+        place.address &&
+        place.city &&
+        place.citySlug &&
+        ["confirmed", "pending"].includes(place.status)
+    );
+
+  const grouped = new Map();
+
+  for (const place of places) {
+    if (!grouped.has(place.citySlug)) {
+      grouped.set(place.citySlug, {
+        name: place.city,
+        slug: place.citySlug,
+        places: [],
+      });
+    }
+
+    grouped.get(place.citySlug).places.push(place);
+  }
+
+  const MIN_PLACES_PER_CITY = 13;
+
+  const cities = [...grouped.values()]
+    .filter(
+      (city) =>
+        city.places.length >= MIN_PLACES_PER_CITY
+    )
+    .sort((a, b) =>
+      a.name.localeCompare(b.name, "pl")
+    );
+
+  for (const city of cities) {
+    const cityDir = path.join(
+      WEB_DIR,
+      city.slug
+    );
+
+    fs.mkdirSync(
+      cityDir,
+      {
+        recursive: true,
+      }
+    );
+
+    const html = buildCityPage(
+      city,
+      city.places
+    );
+
+    fs.writeFileSync(
+      path.join(
+        cityDir,
+        "index.html"
+      ),
+      html,
+      "utf8"
+    );
+
+    console.log(
+      `[GENERATED] /${city.slug}/ — ${city.places.length} miejsc`
+    );
+  }
+
+  const sitemap = buildSitemap(
+    cities
+  );
+
+  fs.writeFileSync(
+    path.join(
+      WEB_DIR,
+      "sitemap.xml"
+    ),
+    sitemap,
+    "utf8"
+  );
+
+  console.log("");
+  console.log(
+    `Wygenerowano stron miast: ${cities.length}`
+  );
+
+  console.log(
+    `Uwzględniono lokali: ${places.length}`
+  );
+
+  console.log(
+    "Zaktualizowano web/sitemap.xml"
+  );
+
+  console.log("");
+}
+
+main()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch((error) => {
+    console.error("");
+    console.error(
+      "Błąd generatora:"
+    );
+    console.error(error);
+    console.error("");
+
+    process.exit(1);
+  });
