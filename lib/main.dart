@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:ui';
+import 'dart:js_interop';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
@@ -19,6 +20,9 @@ import 'screens/add_place_screen.dart';
 import 'services/authentication_service.dart';
 import 'widgets/report_problem_sheet.dart';
 import 'widgets/location_search_dialog.dart';
+
+@JS('window.location.assign')
+external void _navigateToHome(JSString url);
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -1971,6 +1975,12 @@ class _MapScreenState extends State<MapScreen> {
     await _loadPlacesForCurrentView();
   }
 
+  void _openHomePage() {
+    _navigateToHome(
+      'https://darmowakranowka.pl/'.toJS,
+    );
+  }
+
   // ==================================================================
   // BUILD
   // ==================================================================
@@ -2014,14 +2024,46 @@ class _MapScreenState extends State<MapScreen> {
               elevation: 0,
               scrolledUnderElevation:
                   0,
-              title: const Text(
-                'DarmowaKranówka',
-                style: TextStyle(
-                  color:
-                      Colors.blue,
-                  fontWeight:
-                      FontWeight
-                          .w700,
+              title: Semantics(
+                button: true,
+                label:
+                    'Przejdź do strony głównej DarmowaKranówka',
+                child: InkWell(
+                  onTap: _openHomePage,
+                  mouseCursor:
+                      SystemMouseCursors.click,
+                  borderRadius:
+                      BorderRadius.circular(8),
+                  child: const Padding(
+                    padding:
+                        EdgeInsets.symmetric(
+                      vertical: 8,
+                    ),
+                    child: Row(
+                      mainAxisSize:
+                          MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.water_drop,
+                          color:
+                              Colors.blue,
+                          size: 28,
+                        ),
+                        SizedBox(
+                          width: 6,
+                        ),
+                        Text(
+                          'DarmowaKranówka',
+                          style: TextStyle(
+                            color:
+                                Colors.blue,
+                            fontWeight:
+                                FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
               actions: [
