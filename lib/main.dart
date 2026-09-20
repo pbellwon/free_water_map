@@ -955,6 +955,12 @@ class _MapScreenState extends State<MapScreen> {
           data['disputeReason']
               as String?;
 
+      final lastConfirmedAt =
+          (data['lastConfirmedAt'] as Timestamp?)?.toDate();
+
+      final createdAt =
+          (data['createdAt'] as Timestamp?)?.toDate();
+
       final Color markerColor;
 
       switch (status) {
@@ -994,6 +1000,8 @@ class _MapScreenState extends State<MapScreen> {
               confirmations,
               status,
               disputeReason,
+              lastConfirmedAt,
+              createdAt,
             ),
             child: Icon(
               Icons.water_drop,
@@ -1035,6 +1043,29 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
+  String _activityAge(DateTime date) {
+    final age = DateTime.now().difference(date);
+    if (age.isNegative || age.inMinutes < 1) {
+      return 'przed chwilą';
+    }
+    if (age.inMinutes < 60) {
+      return '${age.inMinutes} min temu';
+    }
+    if (age.inHours < 24) {
+      return '${age.inHours} godz. temu';
+    }
+    if (age.inDays == 1) {
+      return 'wczoraj';
+    }
+    if (age.inDays < 30) {
+      return '${age.inDays} dni temu';
+    }
+    final local = date.toLocal();
+    final day = local.day.toString().padLeft(2, '0');
+    final month = local.month.toString().padLeft(2, '0');
+    return '$day.$month.${local.year}';
+  }
+
   // ==================================================================
   // PLACE MODAL
   // ==================================================================
@@ -1049,6 +1080,8 @@ class _MapScreenState extends State<MapScreen> {
     int confirmations,
     String status,
     String? disputeReason,
+    DateTime? lastConfirmedAt,
+    DateTime? createdAt,
   ) async {
     final user =
         FirebaseAuth
@@ -1125,6 +1158,8 @@ class _MapScreenState extends State<MapScreen> {
 
     var displayedDisputeReason =
         disputeReason;
+
+    DateTime? displayedLastConfirmedAt = lastConfirmedAt;
 
     var isConfirming = false;
     var isReporting = false;
@@ -1241,6 +1276,8 @@ class _MapScreenState extends State<MapScreen> {
 
                   hasAlreadyConfirmed =
                       true;
+
+                  displayedLastConfirmedAt = DateTime.now();
                 });
 
                 String message =
@@ -1613,40 +1650,170 @@ class _MapScreenState extends State<MapScreen> {
                       CrossAxisAlignment
                           .start,
                   children: [
-                    Text(
-                      name,
-                      style:
-                          const TextStyle(
-                        fontSize: 22,
-                        fontWeight:
-                            FontWeight
-                                .bold,
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.withValues(alpha: 0.09),
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: const Icon(
+                            Icons.water_drop,
+                            color: Colors.blue,
+                            size: 28,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                name,
+                                style: const TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(height: 5),
+                              Text(
+                                address,
+                                style: const TextStyle(
+                                  color: Colors.black54,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: displayedStatus == 'disputed'
+                            ? Colors.orange.withValues(alpha: 0.10)
+                            : displayedStatus == 'confirmed'
+                                ? Colors.blue.withValues(alpha: 0.08)
+                                : Colors.blueGrey.withValues(alpha: 0.09),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            displayedStatus == 'disputed'
+                                ? Icons.warning_amber_rounded
+                                : displayedStatus == 'confirmed'
+                                    ? Icons.verified_outlined
+                                    : Icons.schedule,
+                            size: 20,
+                            color: displayedStatus == 'disputed'
+                                ? Colors.orange.shade800
+                                : displayedStatus == 'confirmed'
+                                    ? Colors.blue.shade800
+                                    : Colors.blueGrey.shade700,
+                          ),
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: Text(
+                              statusLabel,
+                              style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                color: displayedStatus == 'disputed'
+                                    ? Colors.orange.shade900
+                                    : displayedStatus == 'confirmed'
+                                        ? Colors.blue.shade900
+                                        : Colors.blueGrey.shade800,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(
-                      height: 8,
-                    ),
-                    Text(
-                      address,
-                    ),
-                    const SizedBox(
-                      height: 12,
-                    ),
-                    Text(
-                      statusLabel,
-                      style:
-                          TextStyle(
-                        fontWeight:
-                            FontWeight
-                                .w700,
-                        color: displayedStatus ==
-                                'disputed'
-                            ? Colors
-                                .orange
-                            : Colors
-                                .blue,
+                    const SizedBox(height: 16),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.blueGrey.withValues(alpha: 0.05),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: Colors.blueGrey.withValues(alpha: 0.12),
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Row(
+                            children: [
+                              Icon(Icons.water_drop_outlined,
+                                  color: Colors.blue, size: 20),
+                              SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'Darmowa kranówka do zamówienia',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 14),
+                          Row(
+                            children: [
+                              const Icon(Icons.people_outline,
+                                  color: Colors.blueGrey, size: 20),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'Potwierdzenia społeczności: '
+                                  '$displayedConfirmations',
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (displayedLastConfirmedAt != null) ...[
+                            const SizedBox(height: 10),
+                            Row(
+                              children: [
+                                const Icon(Icons.access_time,
+                                    color: Colors.blueGrey, size: 20),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'Ostatnio potwierdzono: '
+                                    '${_activityAge(displayedLastConfirmedAt!)}',
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                          if (createdAt != null) ...[
+                            const SizedBox(height: 10),
+                            Row(
+                              children: [
+                                const Icon(Icons.add_circle_outline,
+                                    color: Colors.blueGrey, size: 20),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'Dodano do mapy: ${_activityAge(createdAt)}',
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ],
                       ),
                     ),
+                    const SizedBox(height: 12),
                     if (displayedStatus ==
                         'disputed') ...[
                       const SizedBox(
@@ -1707,37 +1874,6 @@ class _MapScreenState extends State<MapScreen> {
                     ],
                     const SizedBox(
                       height: 12,
-                    ),
-                    const Row(
-                      children: [
-                        Icon(
-                          Icons
-                              .water_drop,
-                          color:
-                              Colors.blue,
-                        ),
-                        SizedBox(
-                          width: 8,
-                        ),
-                        Expanded(
-                          child: Text(
-                            'Darmowa woda do zamówienia',
-                            style:
-                                TextStyle(
-                              fontWeight:
-                                  FontWeight
-                                      .w600,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(
-                      height: 8,
-                    ),
-                    Text(
-                      'Potwierdzone: '
-                      '$displayedConfirmations razy',
                     ),
                     if (modalMessage !=
                         null) ...[
