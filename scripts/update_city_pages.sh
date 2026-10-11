@@ -169,6 +169,7 @@ if [ -n "$CITY_SLUGS" ]; then
 fi
 
 cp "$WEB_DIR/sitemap.xml" "$BUILD_DIR/sitemap.xml"
+cp "$WEB_DIR/landing.html" "$BUILD_DIR/index.html"
 
 # ------------------------------------------------------------
 # 9. Deploy

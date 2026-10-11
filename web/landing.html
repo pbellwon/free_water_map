@@ -1,1170 +1,2714 @@
 <!DOCTYPE html>
+
 <html lang="pl">
+
 <head>
+
   <meta charset="UTF-8">
+
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+
 
   <title>DarmowaKranówka – mapa lokali z darmową wodą z kranu</title>
 
+
+
   <meta
+
     name="description"
+
     content="DarmowaKranówka to społecznościowa mapa restauracji, kawiarni i barów w Polsce, które podają darmową wodę z kranu do zamówienia."
+
   >
+
+
 
   <meta name="robots" content="index, follow">
 
+
+
   <link
+
     rel="canonical"
+
     href="https://darmowakranowka.pl/"
+
   >
+
+
 
   <meta property="og:type" content="website">
+
   <meta property="og:site_name" content="DarmowaKranówka">
 
+
+
   <meta
+
     property="og:title"
+
     content="DarmowaKranówka – mapa lokali z darmową wodą z kranu"
+
   >
 
+
+
   <meta
+
     property="og:description"
+
     content="Znajdź restauracje, kawiarnie i bary w Polsce, które podają darmową wodę z kranu do zamówienia."
+
   >
 
+
+
   <meta
+
     property="og:url"
+
     content="https://darmowakranowka.pl/"
+
   >
+
+
 
   <meta property="og:locale" content="pl_PL">
 
+
+
   <meta name="twitter:card" content="summary">
 
-  <meta
-    name="twitter:title"
-    content="DarmowaKranówka – mapa lokali z darmową wodą z kranu"
-  >
+
 
   <meta
-    name="twitter:description"
-    content="Społecznościowa mapa miejsc w Polsce, które podają darmową wodę z kranu do zamówienia."
+
+    name="twitter:title"
+
+    content="DarmowaKranówka – mapa lokali z darmową wodą z kranu"
+
   >
+
+
+
+  <meta
+
+    name="twitter:description"
+
+    content="Społecznościowa mapa miejsc w Polsce, które podają darmową wodę z kranu do zamówienia."
+
+  >
+
+
 
   <link rel="icon" type="image/png" href="/favicon.png">
+
   <link rel="apple-touch-icon" href="/icons/Icon-192.png">
 
+
+
   <link
+
     href="https://fonts.googleapis.com/icon?family=Material+Icons"
+
     rel="stylesheet"
+
   >
 
+
+
   <script type="application/ld+json">
+
   {
+
     "@context": "https://schema.org",
+
     "@type": "WebSite",
+
     "name": "DarmowaKranówka",
+
     "url": "https://darmowakranowka.pl/",
+
     "description": "Społecznościowa mapa restauracji, kawiarni i barów w Polsce, które podają darmową wodę z kranu do zamówienia.",
+
     "inLanguage": "pl-PL"
+
   }
+
   </script>
 
+
+
   <style>
+
     :root {
+
       --blue: #1976d2;
+
       --blue-dark: #125ba5;
+
       --blue-soft: #eef6ff;
+
       --text: #16202a;
+
       --muted: #5f6b76;
+
       --border: #e4e9ef;
+
       --background: #ffffff;
+
       --section: #f8fafc;
+
       --max-width: 1100px;
+
     }
+
+
 
     * {
+
       box-sizing: border-box;
+
     }
+
+
 
     html {
+
       scroll-behavior: smooth;
+
     }
+
+
 
     body {
+
       margin: 0;
+
       background: var(--background);
+
       color: var(--text);
+
       font-family:
+
         -apple-system,
+
         BlinkMacSystemFont,
+
         "Segoe UI",
+
         Roboto,
+
         Helvetica,
+
         Arial,
+
         sans-serif;
+
       line-height: 1.6;
+
     }
+
+
 
     a {
+
       color: inherit;
+
     }
+
+
 
     .container {
+
       width: min(calc(100% - 40px), var(--max-width));
+
       margin: 0 auto;
+
     }
 
+
+
     .material-icons {
+
       font-family: "Material Icons";
+
       font-weight: normal;
+
       font-style: normal;
+
       display: inline-block;
+
       line-height: 1;
+
       letter-spacing: normal;
+
       text-transform: none;
+
       white-space: nowrap;
+
       word-wrap: normal;
+
       direction: ltr;
+
       -webkit-font-feature-settings: "liga";
+
       -webkit-font-smoothing: antialiased;
+
       font-feature-settings: "liga";
+
     }
+
+
 
     /* HEADER */
 
+
+
     header {
+
       position: sticky;
+
       top: 0;
+
       z-index: 20;
+
       background: rgba(255, 255, 255, 0.92);
+
       backdrop-filter: blur(12px);
+
       -webkit-backdrop-filter: blur(12px);
+
       border-bottom: 1px solid rgba(228, 233, 239, 0.8);
+
     }
+
+
 
     .nav {
+
       min-height: 68px;
+
       display: flex;
+
       align-items: center;
+
       justify-content: space-between;
+
       gap: 24px;
+
     }
+
+
 
     .brand {
+
       display: inline-flex;
+
       align-items: center;
+
       gap: 7px;
+
       text-decoration: none;
+
       font-size: 19px;
+
       font-weight: 750;
+
       color: var(--blue);
+
     }
+
+
 
     .brand-icon {
+
       color: var(--blue);
+
       font-size: 29px;
+
     }
+
+
 
     .nav-actions {
+
       display: flex;
+
       align-items: center;
+
       gap: 10px;
+
     }
+
+
 
     .nav-link {
+
       color: var(--muted);
+
       text-decoration: none;
+
       font-size: 14px;
+
       font-weight: 600;
+
     }
+
+
 
     .nav-link:hover {
+
       color: var(--blue);
+
     }
+
+
 
     .instagram-link {
+
       width: 38px;
+
       height: 38px;
+
       display: inline-flex;
+
       align-items: center;
+
       justify-content: center;
+
       border-radius: 50%;
+
       color: #e4405f;
+
       text-decoration: none;
+
       transition:
+
         color 0.15s ease,
+
         background 0.15s ease,
+
         transform 0.15s ease,
+
         box-shadow 0.15s ease;
+
     }
+
+
 
     .instagram-link:hover {
+
       color: #c13584;
+
       background: rgba(228, 64, 95, 0.10);
+
       transform: translateY(-1px);
+
       box-shadow: 0 6px 16px rgba(228, 64, 95, 0.18);
+
     }
 
+
+
     .instagram-link svg {
+
       width: 21px;
+
       height: 21px;
+
       display: block;
+
     }
+
+
 
     /* HERO */
 
+
+
     .hero {
+
       padding: 105px 0 95px;
+
       overflow: hidden;
+
       background:
+
         radial-gradient(
+
           circle at 80% 20%,
+
           rgba(25, 118, 210, 0.10),
+
           transparent 35%
+
         ),
+
         linear-gradient(
+
           180deg,
+
           #ffffff 0%,
+
           #fbfdff 100%
+
         );
+
     }
+
+
 
     .hero-inner {
+
       max-width: 800px;
+
     }
+
+
 
     .beta {
+
       display: inline-flex;
+
       align-items: center;
+
       padding: 6px 11px;
+
       margin-bottom: 22px;
+
       border-radius: 999px;
+
       background: var(--blue-soft);
+
       color: var(--blue-dark);
+
       font-size: 12px;
+
       font-weight: 800;
+
       letter-spacing: 0.6px;
+
     }
+
+
 
     .hero-drop {
+
       display: block;
+
       margin-bottom: 20px;
+
       color: var(--blue);
+
       font-size: 52px;
+
     }
+
+
 
     h1 {
+
       max-width: 790px;
+
       margin: 0;
+
       font-size: clamp(42px, 7vw, 72px);
+
       line-height: 1.04;
+
       letter-spacing: -2.5px;
+
       font-weight: 800;
+
     }
+
+
 
     .hero-highlight {
+
       color: var(--blue);
+
     }
+
+
 
     .hero-description {
+
       max-width: 680px;
+
       margin: 28px 0 0;
+
       color: var(--muted);
+
       font-size: clamp(18px, 2.3vw, 21px);
+
       line-height: 1.65;
+
     }
+
+
 
     .hero-actions {
+
       display: flex;
+
       flex-wrap: wrap;
+
       align-items: center;
+
       gap: 12px;
+
       margin-top: 34px;
+
     }
+
+
 
     .button {
+
       display: inline-flex;
+
       align-items: center;
+
       justify-content: center;
+
       min-height: 50px;
+
       padding: 0 22px;
+
       border-radius: 12px;
+
       text-decoration: none;
+
       font-size: 15px;
+
       font-weight: 700;
+
       transition:
+
         transform 0.15s ease,
+
         background 0.15s ease;
+
     }
+
+
 
     .button:hover {
+
       transform: translateY(-1px);
+
     }
+
+
 
     .button-primary {
+
       background: var(--blue);
+
       color: #ffffff;
+
     }
+
+
 
     .button-primary:hover {
+
       background: var(--blue-dark);
+
     }
 
+
+
     .button-secondary {
+
       color: var(--blue-dark);
+
       background: var(--blue-soft);
+
     }
+
+
 
     /* SECTIONS */
 
+
+
     section {
+
       padding: 90px 0;
+
     }
+
+
 
     .section-soft {
+
       background: var(--section);
+
     }
+
+
 
     .section-label {
+
       margin-bottom: 10px;
+
       color: var(--blue);
+
       font-size: 13px;
+
       font-weight: 800;
+
       letter-spacing: 0.7px;
+
       text-transform: uppercase;
+
     }
+
+
 
     h2 {
+
       max-width: 720px;
+
       margin: 0;
+
       font-size: clamp(30px, 4vw, 42px);
+
       line-height: 1.15;
+
       letter-spacing: -1.2px;
+
     }
 
+
+
     .section-intro {
+
       max-width: 720px;
+
       margin: 20px 0 0;
+
       color: var(--muted);
+
       font-size: 18px;
+
     }
+
+
 
     /* HOW */
 
+
+
     .steps {
+
       display: grid;
+
       grid-template-columns: repeat(3, 1fr);
+
       gap: 22px;
+
       margin-top: 48px;
+
     }
+
+
 
     .step {
+
       padding: 28px;
+
       background: #ffffff;
+
       border: 1px solid var(--border);
+
       border-radius: 18px;
+
     }
+
+
 
     .step-number {
+
       width: 38px;
+
       height: 38px;
+
       display: flex;
+
       align-items: center;
+
       justify-content: center;
+
       margin-bottom: 20px;
+
       border-radius: 50%;
+
       color: #ffffff;
+
       background: var(--blue);
+
       font-weight: 800;
+
     }
+
+
 
     .step h3 {
+
       margin: 0 0 9px;
+
       font-size: 19px;
+
     }
+
+
 
     .step p {
+
       margin: 0;
+
       color: var(--muted);
+
     }
 
-    /* CITIES */
+
+
+  
+  /* RECENT ACTIVITY */
+
+  .activity-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 22px;
+    margin-top: 44px;
+  }
+
+  .activity-column {
+    padding: 26px;
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    background: #ffffff;
+  }
+
+  .activity-column-heading {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 18px;
+  }
+
+  .activity-column-heading .material-icons {
+    color: var(--blue);
+    font-size: 24px;
+  }
+
+  .activity-column-heading h3 {
+    margin: 0;
+    font-size: 20px;
+    line-height: 1.3;
+  }
+
+  .activity-list {
+    display: grid;
+    gap: 10px;
+  }
+
+  .activity-card {
+    display: block;
+    padding: 16px 17px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: var(--section);
+  }
+
+  .activity-name {
+    display: block;
+    color: var(--text);
+    font-size: 16px;
+    font-weight: 750;
+    line-height: 1.35;
+  }
+
+  .activity-address {
+    display: block;
+    margin-top: 4px;
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.45;
+  }
+
+  .activity-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 8px;
+    margin-top: 6px;
+    color: var(--muted);
+    font-size: 13px;
+  }
+
+  .activity-city {
+    color: var(--blue-dark);
+    font-weight: 650;
+  }
+
+  .activity-empty {
+    margin: 0;
+    padding: 16px 17px;
+    border: 1px dashed var(--border);
+    border-radius: 14px;
+    color: var(--muted);
+    font-size: 14px;
+  }
+
+  /* CITIES */
+
+
 
     .cities {
+
       display: grid;
+
       grid-template-columns: repeat(3, minmax(0, 1fr));
+
       gap: 18px;
+
       margin-top: 44px;
+
     }
+
+
 
     .city-card {
+
       position: relative;
+
       display: flex;
+
       align-items: center;
+
       justify-content: space-between;
+
       gap: 20px;
+
       min-height: 92px;
+
       padding: 22px 24px;
+
       border: 1px solid var(--border);
+
       border-radius: 17px;
+
       background: #ffffff;
+
       text-decoration: none;
+
       transition:
+
         border-color 0.15s ease,
+
         box-shadow 0.15s ease,
+
         transform 0.15s ease;
+
     }
+
+
 
     .city-card:hover {
+
       border-color: rgba(25, 118, 210, 0.35);
+
       box-shadow: 0 9px 25px rgba(22, 32, 42, 0.07);
+
       transform: translateY(-2px);
+
     }
+
+
 
     .city-name {
+
       display: block;
+
       color: var(--text);
+
       font-size: 19px;
+
       font-weight: 750;
+
     }
+
+
 
     .city-description {
+
       display: block;
+
       margin-top: 2px;
+
       color: var(--muted);
+
       font-size: 13px;
+
     }
+
+
 
     .city-arrow {
+
       flex-shrink: 0;
+
       color: var(--blue);
+
       font-size: 24px;
+
     }
+
+
 
     .cities-footer {
+
       margin-top: 28px;
+
       color: var(--muted);
+
       font-size: 14px;
+
     }
+
+
 
     .cities-footer a {
+
       color: var(--blue-dark);
+
       font-weight: 700;
+
       text-decoration: none;
+
     }
 
+
+
     .cities-footer a:hover {
+
       text-decoration: underline;
+
     }
+
+
 
     /* WHY */
 
+
+
     .why-grid {
+
       display: grid;
+
       grid-template-columns: minmax(0, 1.35fr) minmax(260px, 0.65fr);
+
       gap: 60px;
+
       align-items: start;
+
     }
+
+
 
     .why-copy p {
+
       max-width: 720px;
+
       margin: 0 0 18px;
+
       color: var(--muted);
+
       font-size: 17px;
+
     }
+
+
 
     .why-copy .mission {
+
       color: var(--text);
+
       font-weight: 700;
+
     }
+
+
 
     .why-box {
+
       padding: 30px;
+
       border-radius: 20px;
+
       background: var(--blue-soft);
+
     }
+
+
 
     .why-box strong {
+
       display: block;
+
       margin-bottom: 8px;
+
       color: var(--blue-dark);
+
       font-size: 20px;
+
     }
 
+
+
     .why-box p {
+
       margin: 0;
+
       color: #41576b;
+
     }
+
+
 
     /* FAQ */
 
+
+
     .faq {
+
       max-width: 800px;
+
       margin-top: 42px;
+
     }
+
+
 
     details {
+
       border-bottom: 1px solid var(--border);
+
     }
+
+
 
     summary {
+
       padding: 22px 0;
+
       cursor: pointer;
+
       font-size: 17px;
+
       font-weight: 700;
+
     }
 
+
+
     details p {
+
       max-width: 720px;
+
       margin: -6px 0 22px;
+
       color: var(--muted);
+
     }
+
+
 
     /* CTA */
 
+
+
     .final-cta {
+
       text-align: center;
+
     }
+
+
 
     .final-drop {
+
       display: block;
+
       margin: 0 auto 16px;
+
       color: var(--blue);
+
       font-size: 46px;
+
     }
+
+
 
     .final-cta h2 {
+
       margin-left: auto;
+
       margin-right: auto;
+
     }
 
+
+
     .final-cta p {
+
       max-width: 600px;
+
       margin: 20px auto 30px;
+
       color: var(--muted);
+
       font-size: 18px;
+
     }
+
+
 
     /* FOOTER */
 
+
+
     footer {
+
       padding: 32px 0;
+
       border-top: 1px solid var(--border);
+
     }
 
+
+
     .footer-inner {
+
       display: flex;
+
       justify-content: space-between;
+
       gap: 30px;
+
       color: var(--muted);
+
       font-size: 13px;
+
     }
+
+
 
     /* MOBILE */
 
+
+
     @media (max-width: 760px) {
+
       .container {
+
         width: min(calc(100% - 30px), var(--max-width));
+
       }
+
+
 
       .nav {
+
         min-height: 62px;
+
       }
+
+
 
       .nav-link {
+
         display: none;
+
       }
+
+
 
       .hero {
+
         padding: 72px 0 68px;
+
       }
+
+
 
       .hero-drop {
+
         font-size: 48px;
+
       }
+
+
 
       h1 {
+
         letter-spacing: -1.6px;
+
       }
+
+
 
       section {
+
         padding: 68px 0;
+
       }
+
+
 
       .steps {
+
         grid-template-columns: 1fr;
+
       }
 
+
+
       .cities {
+
         grid-template-columns: 1fr;
+
       }
+
+
 
       .why-grid {
+
         grid-template-columns: 1fr;
+
         gap: 32px;
+
       }
+
+
 
       .hero-actions {
+
         align-items: stretch;
+
         flex-direction: column;
+
       }
+
+
 
       .button {
+
         width: 100%;
+
       }
+
+
 
       .footer-inner {
+
         flex-direction: column;
+
         gap: 8px;
+
       }
+
+      .activity-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .activity-column {
+        padding: 20px;
+      }
+
     }
 
+
+
     @media (min-width: 761px) and (max-width: 980px) {
+
       .cities {
+
         grid-template-columns: repeat(2, minmax(0, 1fr));
+
       }
+
     }
+
   </style>
+
 </head>
+
+
 
 <body>
 
+
+
   <header>
+
     <div class="container nav">
 
+
+
       <a class="brand" href="/">
+
         <span
+
           class="material-icons brand-icon"
+
           aria-hidden="true"
+
         >
+
           water_drop
+
         </span>
 
+
+
         DarmowaKranówka
+
       </a>
+
+
 
       <div class="nav-actions">
 
-        <a
-          class="nav-link"
-          href="#jak-to-dziala"
-        >
-          Jak to działa
-        </a>
+
 
         <a
-          class="instagram-link"
-          href="https://www.instagram.com/darmowakranowka/"
-          target="_blank"
-          rel="noopener noreferrer"
-          aria-label="DarmowaKranówka na Instagramie"
+
+          class="nav-link"
+
+          href="#jak-to-dziala"
+
         >
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-            aria-hidden="true"
-          >
-            <rect
-              x="3"
-              y="3"
-              width="18"
-              height="18"
-              rx="5"
-              stroke="currentColor"
-              stroke-width="2"
-            />
-            <circle
-              cx="12"
-              cy="12"
-              r="4"
-              stroke="currentColor"
-              stroke-width="2"
-            />
-            <circle
-              cx="17.4"
-              cy="6.7"
-              r="1.1"
-              fill="currentColor"
-            />
-          </svg>
+
+          Jak to działa
+
         </a>
+
+
+
+        <a
+
+          class="instagram-link"
+
+          href="https://www.instagram.com/darmowakranowka/"
+
+          target="_blank"
+
+          rel="noopener noreferrer"
+
+          aria-label="DarmowaKranówka na Instagramie"
+
+        >
+
+          <svg
+
+            viewBox="0 0 24 24"
+
+            fill="none"
+
+            xmlns="http://www.w3.org/2000/svg"
+
+            aria-hidden="true"
+
+          >
+
+            <rect
+
+              x="3"
+
+              y="3"
+
+              width="18"
+
+              height="18"
+
+              rx="5"
+
+              stroke="currentColor"
+
+              stroke-width="2"
+
+            />
+
+            <circle
+
+              cx="12"
+
+              cy="12"
+
+              r="4"
+
+              stroke="currentColor"
+
+              stroke-width="2"
+
+            />
+
+            <circle
+
+              cx="17.4"
+
+              cy="6.7"
+
+              r="1.1"
+
+              fill="currentColor"
+
+            />
+
+          </svg>
+
+        </a>
+
+
 
       </div>
 
+
+
     </div>
+
   </header>
+
+
 
   <main>
 
+
+
     <section class="hero">
+
       <div class="container">
+
         <div class="hero-inner">
 
+
+
           <span
+
             class="material-icons hero-drop"
+
             aria-hidden="true"
+
           >
+
             water_drop
+
           </span>
 
+
+
           <div class="beta">
+
             WERSJA BETA
+
           </div>
 
+
+
           <h1>
+
             Znajdź miejsca z
+
             <span class="hero-highlight">
+
               darmową kranówką
+
             </span>
+
           </h1>
 
+
+
           <p class="hero-description">
+
             DarmowaKranówka to społecznościowa mapa restauracji,
+
             kawiarni i barów w Polsce, które podają darmową wodę
+
             z kranu do zamówienia.
+
           </p>
+
+
 
           <div class="hero-actions">
 
-            <a
-              class="button button-primary"
-              href="/mapa/"
-            >
-              Otwórz mapę
-            </a>
+
 
             <a
-              class="button button-secondary"
-              href="#jak-to-dziala"
+
+              class="button button-primary"
+
+              href="/mapa/"
+
             >
-              Jak to działa?
+
+              Otwórz mapę
+
             </a>
+
+
+
+            <a
+
+              class="button button-secondary"
+
+              href="#jak-to-dziala"
+
+            >
+
+              Jak to działa?
+
+            </a>
+
+
 
           </div>
 
+
+
         </div>
+
       </div>
+
     </section>
 
+
+
     <section
+
       id="jak-to-dziala"
+
       class="section-soft"
+
     >
+
       <div class="container">
 
+
+
         <div class="section-label">
+
           Jak to działa
+
         </div>
 
+
+
         <h2>
+
           Mapa tworzona przez użytkowników
+
         </h2>
 
+
+
         <p class="section-intro">
+
           Projekt opiera się na prostym pomyśle:
+
           znajdujemy miejsca, które podają darmową wodę z kranu,
+
           i wspólnie dbamy o aktualność informacji.
+
         </p>
+
+
 
         <div class="steps">
 
+
+
           <article class="step">
+
             <div class="step-number">
+
               1
+
             </div>
 
+
+
             <h3>
+
               Znajdź miejsce
+
             </h3>
 
+
+
             <p>
+
               Otwórz mapę i sprawdź restauracje,
+
               kawiarnie oraz bary w swojej okolicy.
+
             </p>
+
           </article>
 
+
+
           <article class="step">
+
             <div class="step-number">
+
               2
+
             </div>
 
+
+
             <h3>
+
               Potwierdź informację
+
             </h3>
 
+
+
             <p>
+
               Jeśli lokal faktycznie podał Ci darmową
+
               wodę z kranu, możesz to potwierdzić.
+
             </p>
+
           </article>
+
+
 
           <article class="step">
+
             <div class="step-number">
+
               3
+
             </div>
 
+
+
             <h3>
+
               Dodaj nowe miejsce
+
             </h3>
 
+
+
             <p>
+
               Znasz lokal, którego nie ma na mapie?
+
               Dodaj go i pomóż rozwijać bazę.
+
             </p>
+
           </article>
+
+
 
         </div>
+
       </div>
+
     </section>
 
-    <section id="miasta">
-      <div class="container">
 
-        <div class="section-label">
-          Popularne miasta
+
+  
+              <!-- RECENT_ACTIVITY_START -->
+  <section class="section-soft" id="ostatnia-aktywnosc">
+    <div class="container">
+
+      <div class="section-label">
+        Ostatnia aktywność
+      </div>
+
+      <h2>
+        Co nowego na mapie?
+      </h2>
+
+      <p class="section-intro">
+        Najnowsze miejsca dodane przez społeczność i lokale,
+        których dostępność została ostatnio potwierdzona.
+      </p>
+
+      <div class="activity-grid">
+
+        <div class="activity-column">
+          <div class="activity-column-heading">
+            <span class="material-icons" aria-hidden="true">
+              add_location_alt
+            </span>
+            <h3>Ostatnio dodane</h3>
+          </div>
+
+          <div class="activity-list">
+
+            <article class="activity-card">
+              <span class="activity-name">
+                Pokusa Bakery
+              </span>
+
+              <span class="activity-address">
+                Świętojańska 3, 81-368 Gdynia
+              </span>
+
+              <span class="activity-meta">
+                <span class="activity-city">
+                  Gdynia
+                </span>
+
+                <span aria-hidden="true">·</span>
+
+                <time
+                  class="activity-time"
+                  datetime="2026-10-10T18:41:36.856Z"
+                  data-prefix="Dodano"
+                >
+                  Dodano 10.10.2026
+                </time>
+              </span>
+            </article>
+
+            <article class="activity-card">
+              <span class="activity-name">
+                Taczaka 20
+              </span>
+
+              <span class="activity-address">
+                Taczaka 20, Stanisława Taczaka 20, 61-819 Poznan
+              </span>
+
+              <span class="activity-meta">
+                <span class="activity-city">
+                  Poznań
+                </span>
+
+                <span aria-hidden="true">·</span>
+
+                <time
+                  class="activity-time"
+                  datetime="2026-10-08T06:47:55.782Z"
+                  data-prefix="Dodano"
+                >
+                  Dodano 08.10.2026
+                </time>
+              </span>
+            </article>
+
+            <article class="activity-card">
+              <span class="activity-name">
+                Strag
+              </span>
+
+              <span class="activity-address">
+                Augustyna Szamarzewskiego 39, 60-551 Poznan
+              </span>
+
+              <span class="activity-meta">
+                <span class="activity-city">
+                  Poznań
+                </span>
+
+                <span aria-hidden="true">·</span>
+
+                <time
+                  class="activity-time"
+                  datetime="2026-10-07T18:41:09.761Z"
+                  data-prefix="Dodano"
+                >
+                  Dodano 07.10.2026
+                </time>
+              </span>
+            </article>
+          </div>
         </div>
 
+
+        <div class="activity-column">
+          <div class="activity-column-heading">
+            <span class="material-icons" aria-hidden="true">
+              verified
+            </span>
+            <h3>Ostatnio potwierdzone</h3>
+          </div>
+
+          <div class="activity-list">
+
+            <article class="activity-card">
+              <span class="activity-name">
+                Charlotte
+              </span>
+
+              <span class="activity-address">
+                Charlotte, Świętego Antoniego 2-4, 50-073 Wrocław
+              </span>
+
+              <span class="activity-meta">
+                <span class="activity-city">
+                  Wrocław
+                </span>
+
+                <span aria-hidden="true">·</span>
+
+                <time
+                  class="activity-time"
+                  datetime="2026-10-09T12:21:35.687Z"
+                  data-prefix="Potwierdzono"
+                >
+                  Potwierdzono 09.10.2026
+                </time>
+              </span>
+            </article>
+
+            <article class="activity-card">
+              <span class="activity-name">
+                Słodzikowo kawiarnia
+              </span>
+
+              <span class="activity-address">
+                Braterstwa Narodów 47, 82-500 Kwidzyn
+              </span>
+
+              <span class="activity-meta">
+                <span class="activity-city">
+                  Kwidzyn
+                </span>
+
+                <span aria-hidden="true">·</span>
+
+                <time
+                  class="activity-time"
+                  datetime="2026-10-07T21:37:22.693Z"
+                  data-prefix="Potwierdzono"
+                >
+                  Potwierdzono 07.10.2026
+                </time>
+              </span>
+            </article>
+
+            <article class="activity-card">
+              <span class="activity-name">
+                Makaron
+              </span>
+
+              <span class="activity-address">
+                Makaron, Zofii Nałkowskiej 61, 60-586 Poznan
+              </span>
+
+              <span class="activity-meta">
+                <span class="activity-city">
+                  Poznań
+                </span>
+
+                <span aria-hidden="true">·</span>
+
+                <time
+                  class="activity-time"
+                  datetime="2026-10-07T14:24:40.016Z"
+                  data-prefix="Potwierdzono"
+                >
+                  Potwierdzono 07.10.2026
+                </time>
+              </span>
+            </article>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <script>
+    (() => {
+      const formatter = new Intl.RelativeTimeFormat(
+        "pl",
+        { numeric: "auto" }
+      );
+
+      function relativeText(date) {
+        const diffMs = date.getTime() - Date.now();
+        const absMs = Math.abs(diffMs);
+
+        const minute = 60 * 1000;
+        const hour = 60 * minute;
+        const day = 24 * hour;
+
+        if (absMs < minute) {
+          return "przed chwilą";
+        }
+
+        if (absMs < hour) {
+          return formatter.format(
+            Math.round(diffMs / minute),
+            "minute"
+          );
+        }
+
+        if (absMs < day) {
+          return formatter.format(
+            Math.round(diffMs / hour),
+            "hour"
+          );
+        }
+
+        if (absMs < 30 * day) {
+          return formatter.format(
+            Math.round(diffMs / day),
+            "day"
+          );
+        }
+
+        return new Intl.DateTimeFormat(
+          "pl-PL",
+          {
+            day: "2-digit",
+            month: "2-digit",
+            year: "numeric",
+          }
+        ).format(date);
+      }
+
+      function updateActivityTimes() {
+        document
+          .querySelectorAll(".activity-time[datetime]")
+          .forEach((element) => {
+            const date = new Date(
+              element.getAttribute("datetime")
+            );
+
+            if (Number.isNaN(date.getTime())) {
+              return;
+            }
+
+            const prefix =
+              element.getAttribute("data-prefix") ?? "";
+
+            element.textContent =
+              prefix + " " + relativeText(date);
+          });
+      }
+
+      updateActivityTimes();
+      window.setInterval(updateActivityTimes, 60 * 1000);
+    })();
+  </script>
+  <!-- RECENT_ACTIVITY_END -->
+
+  <section id="miasta">
+
+      <div class="container">
+
+
+
+        <div class="section-label">
+
+          Popularne miasta
+
+        </div>
+
+
+
         <h2>
+
           Sprawdź miejsca z darmową kranówką w swoim mieście
+
         </h2>
 
+
+
         <p class="section-intro">
+
           Zobacz listy restauracji, kawiarni i barów
+
           zgłoszonych przez społeczność w miastach,
+
           w których mapa ma już najwięcej miejsc.
+
         </p>
+
+
 
         <div class="cities">
 
+
+
           <a
+
             class="city-card"
+
             href="/warszawa/"
+
           >
+
             <span>
+
               <span class="city-name">
+
                 Warszawa
+
               </span>
 
+
+
               <span class="city-description">
+
                 Darmowa kranówka w Warszawie
+
               </span>
+
             </span>
+
+
 
             <span
+
               class="material-icons city-arrow"
+
               aria-hidden="true"
+
             >
+
               arrow_forward
+
             </span>
+
           </a>
 
+
+
           <a
+
             class="city-card"
+
             href="/gdansk/"
+
           >
+
             <span>
+
               <span class="city-name">
+
                 Gdańsk
+
               </span>
 
+
+
               <span class="city-description">
+
                 Darmowa kranówka w Gdańsku
+
               </span>
+
             </span>
+
+
 
             <span
+
               class="material-icons city-arrow"
+
               aria-hidden="true"
+
             >
+
               arrow_forward
+
             </span>
+
           </a>
 
+
+
           <a
+
             class="city-card"
+
             href="/poznan/"
+
           >
+
             <span>
+
               <span class="city-name">
+
                 Poznań
+
               </span>
 
+
+
               <span class="city-description">
+
                 Darmowa kranówka w Poznaniu
+
               </span>
+
             </span>
+
+
 
             <span
+
               class="material-icons city-arrow"
+
               aria-hidden="true"
+
             >
+
               arrow_forward
+
             </span>
+
           </a>
 
+
+
           <a
+
             class="city-card"
+
             href="/wroclaw/"
+
           >
+
             <span>
+
               <span class="city-name">
+
                 Wrocław
+
               </span>
 
+
+
               <span class="city-description">
+
                 Darmowa kranówka we Wrocławiu
+
               </span>
+
             </span>
+
+
 
             <span
+
               class="material-icons city-arrow"
+
               aria-hidden="true"
+
             >
+
               arrow_forward
+
             </span>
+
           </a>
 
+
+
           <a
+
             class="city-card"
+
             href="/krakow/"
+
           >
+
             <span>
+
               <span class="city-name">
+
                 Kraków
+
               </span>
+
+
 
               <span class="city-description">
+
                 Darmowa kranówka w Krakowie
+
               </span>
+
             </span>
 
+
+
             <span
+
               class="material-icons city-arrow"
+
               aria-hidden="true"
+
             >
+
               arrow_forward
+
             </span>
+
           </a>
+
+
 
           <a
+
             class="city-card"
+
             href="/gdynia/"
+
           >
+
             <span>
+
               <span class="city-name">
+
                 Gdynia
+
               </span>
+
+
 
               <span class="city-description">
+
                 Darmowa kranówka w Gdyni
+
               </span>
+
             </span>
 
+
+
             <span
+
               class="material-icons city-arrow"
+
               aria-hidden="true"
+
             >
+
               arrow_forward
+
             </span>
+
           </a>
+
+
 
         </div>
 
+
+
         <p class="cities-footer">
+
           Nie widzisz swojego miasta?
+
           <a href="/mapa/">
+
             Sprawdź całą mapę Polski
+
           </a>.
+
         </p>
 
+
+
       </div>
+
     </section>
 
+
+
     <section class="section-soft">
+
       <div class="container why-grid">
+
+
 
         <div class="why-copy">
 
+
+
           <div class="section-label">
+
             Po co ta mapa?
+
           </div>
 
+
+
           <h2>
+
             Dobra praktyka, którą warto pokazywać
+
           </h2>
 
-          <p>
-            Pomysł, aby restauracje miały obowiązek podawania
-            klientom darmowej wody z kranu, ostatecznie
-            nie znalazł się w przepisach.
-          </p>
+
 
           <p>
-            Wierzymy jednak, że prawo nie musi być jedynym
-            powodem, żeby robić coś dobrze. Dostęp do zwykłej
-            kranówki przy posiłku powinien być czymś normalnym —
-            a wiele restauracji, kawiarni i barów już dziś
-            podaje ją swoim gościom bezpłatnie.
+
+            Pomysł, aby restauracje miały obowiązek podawania
+
+            klientom darmowej wody z kranu, ostatecznie
+
+            nie znalazł się w przepisach.
+
           </p>
+
+
+
+          <p>
+
+            Wierzymy jednak, że prawo nie musi być jedynym
+
+            powodem, żeby robić coś dobrze. Dostęp do zwykłej
+
+            kranówki przy posiłku powinien być czymś normalnym —
+
+            a wiele restauracji, kawiarni i barów już dziś
+
+            podaje ją swoim gościom bezpłatnie.
+
+          </p>
+
+
 
           <p class="mission">
+
             DarmowaKranówka powstała po to, żeby te miejsca
+
             odnaleźć i pokazać innym.
+
           </p>
+
+
 
           <p>
+
             To projekt społecznościowy — im więcej osób
+
             dodaje i potwierdza lokale, tym bardziej użyteczna
+
             staje się mapa.
+
           </p>
 
+
+
         </div>
+
+
 
         <aside class="why-box">
 
+
+
           <strong>
+
             Projekt jest w wersji Beta
+
           </strong>
 
+
+
           <p>
+
             Mapa jest cały czas rozwijana.
+
             Funkcje, dane i sposób prezentowania miejsc
+
             będą się zmieniać razem z projektem
+
             i opiniami użytkowników.
+
           </p>
+
+
 
         </aside>
 
+
+
       </div>
+
     </section>
 
+
+
     <section>
+
       <div class="container">
 
+
+
         <div class="section-label">
+
           Najczęstsze pytania
+
         </div>
 
+
+
         <h2>
+
           DarmowaKranówka – FAQ
+
         </h2>
+
+
 
         <div class="faq">
 
+
+
           <details>
+
             <summary>
+
               Czym jest DarmowaKranówka?
+
             </summary>
 
+
+
             <p>
+
               To społecznościowa mapa miejsc w Polsce,
+
               które podają darmową wodę z kranu do zamówienia.
+
               Użytkownicy mogą wyszukiwać, dodawać
+
               i potwierdzać lokale.
+
             </p>
+
           </details>
 
+
+
           <details>
+
             <summary>
+
               Jakie miejsca można znaleźć na mapie?
+
             </summary>
 
+
+
             <p>
+
               Mapa obejmuje przede wszystkim restauracje,
+
               kawiarnie i bary, w których użytkownicy
+
               otrzymali darmową wodę z kranu do zamówienia.
+
             </p>
+
           </details>
 
+
+
           <details>
+
             <summary>
+
               Czy mogę dodać lokal?
+
             </summary>
 
+
+
             <p>
+
               Tak. Jeśli znasz miejsce, które podaje darmową
+
               wodę z kranu i nie znajduje się jeszcze na mapie,
+
               możesz je dodać bezpośrednio w aplikacji.
+
             </p>
+
           </details>
 
+
+
           <details>
+
             <summary>
+
               Skąd wiadomo, że informacje są aktualne?
+
             </summary>
 
+
+
             <p>
+
               Użytkownicy mogą potwierdzać istniejące miejsca
+
               oraz zgłaszać problemy z wpisami.
+
               Dzięki temu dane mogą być na bieżąco
+
               weryfikowane przez społeczność.
+
             </p>
+
           </details>
+
+
 
           <details>
+
             <summary>
+
               Czy korzystanie z mapy jest bezpłatne?
+
             </summary>
 
+
+
             <p>
+
               Tak. Korzystanie z DarmowejKranówki
+
               jest bezpłatne.
+
             </p>
+
           </details>
+
+
 
         </div>
+
       </div>
+
     </section>
+
+
 
     <section class="section-soft">
+
       <div class="container final-cta">
 
+
+
         <span
+
           class="material-icons final-drop"
+
           aria-hidden="true"
+
         >
+
           water_drop
+
         </span>
 
+
+
         <div class="section-label">
+
           Sprawdź mapę
+
         </div>
 
+
+
         <h2>
+
           Może takie miejsce jest tuż obok
+
         </h2>
 
+
+
         <p>
+
           Otwórz mapę, sprawdź lokale w swojej okolicy
+
           i pomóż rozwijać społecznościową bazę.
+
         </p>
 
+
+
         <a
+
           class="button button-primary"
+
           href="/mapa/"
+
         >
+
           Otwórz DarmowąKranówkę
+
         </a>
 
+
+
       </div>
+
     </section>
+
+
 
   </main>
 
+
+
   <footer>
+
     <div class="container footer-inner">
 
-      <div>
-        © DarmowaKranówka
-      </div>
+
 
       <div>
-        Społecznościowa mapa darmowej wody z kranu
+
+        © DarmowaKranówka
+
       </div>
+
+
+
+      <div>
+
+        Społecznościowa mapa darmowej wody z kranu
+
+      </div>
+
+
 
     </div>
+
   </footer>
 
+
+
 </body>
+
 </html>
